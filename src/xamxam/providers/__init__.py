@@ -6,7 +6,12 @@ from xamxam.providers.base import (
     STTProvider,
     TTSProvider,
 )
-from xamxam.providers.factory import ProviderName, create_stt_provider, create_tts_provider
+from xamxam.providers.factory import (
+    ProviderName,
+    create_providers,
+    create_stt_provider,
+    create_tts_provider,
+)
 from xamxam.providers.mock import MockSTTProvider, MockTTSProvider
 
 __all__ = [
@@ -17,6 +22,7 @@ __all__ = [
     "ProviderNotConfiguredError",
     "STTProvider",
     "TTSProvider",
+    "create_providers",
     "create_stt_provider",
     "create_tts_provider",
 ]

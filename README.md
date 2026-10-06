@@ -59,13 +59,19 @@ Les résultats sont écrits dans `outputs/` (ignoré par Git) :
 Copiez `.env.example` en `.env` et renseignez les clés dont vous disposez, puis chargez-les
 (`set -a; source .env; set +a`). **Toutes les variables sont optionnelles** :
 
+- avec `KVICC_*`, Xam-Xam utilise l'API Kiriku du challenge (TTS wolof et pulaar, STT wolof,
+  pulaar et sérère) ;
 - sans `KVICC_*`, le TTS et le STT **mock** sont utilisés (audio silencieux, aller-retour exact) ;
 - sans `TIMALENS_API_KEY`, la génération vidéo est désactivée et un message l'indique ;
 - sans `WHATSAPP_TOKEN`, le webhook répond 503.
 
-> ⚠️ L'intégration de l'API KVICC (`src/xamxam/providers/kvicc.py`) et celle de TimaLens
-> (`src/xamxam/timalens/client.py`) sont des squelettes : leurs endpoints restent à renseigner à
-> partir de la documentation officielle.
+Le client KVICC respecte les limites de l'API : il espace les requêtes (30 par minute et par clé,
+TTS et STT confondus), réessaie après un `429` ou un `503` en suivant `Retry-After`, et découpe par
+phrase les textes de plus de 512 caractères. Une évaluation de 100 phrases demande 400 requêtes,
+soit environ 14 minutes.
+
+> ⚠️ L'intégration TimaLens (`src/xamxam/timalens/client.py`) est encore un squelette : ses
+> endpoints restent à renseigner à partir de la documentation officielle.
 
 ### Serveur de développement
 
@@ -83,7 +89,7 @@ src/xamxam/
 ├── normalize/   expressions mathématiques → mots, tables de lecture par langue
 ├── pronounce/   substitution des termes par leur prononciation validée
 ├── pipeline.py  normalisation puis réécriture : le texte prêt pour le TTS
-├── providers/   interfaces TTSProvider / STTProvider, mock, squelette KVICC
+├── providers/   interfaces TTSProvider / STTProvider, mock, API Kiriku du KVICC
 ├── timalens/    client vidéo optionnel (désactivé sans clé)
 ├── whatsapp/    webhook FastAPI (squelette)
 └── eval/        évaluation avant/après : run, alignement, fiche humaine, métriques, rapport

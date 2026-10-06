@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 
 from xamxam.config import DEFAULT_LEXICON_PATH, Settings
 from xamxam.pipeline import XamXamPipeline
-from xamxam.providers import ProviderName, TTSProvider, create_tts_provider
+from xamxam.providers import ProviderError, ProviderName, TTSProvider, create_tts_provider
 from xamxam.timalens import build_timalens_client
 
 
@@ -79,8 +79,8 @@ def create_app(
         prepared = pipeline.prepare(body.text)
         try:
             audio = tts.synthesize(prepared.text)
-        except NotImplementedError as exc:
-            raise HTTPException(status_code=501, detail=str(exc)) from exc
+        except ProviderError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
         return Response(content=audio, media_type="audio/wav")
 
     return app

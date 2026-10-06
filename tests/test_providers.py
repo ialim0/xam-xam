@@ -58,8 +58,6 @@ def test_kvicc_requires_configuration() -> None:
         create_stt_provider(ProviderName.KVICC, Settings())
 
 
-def test_kvicc_skeleton_is_explicit_and_hides_key() -> None:
+def test_kvicc_from_settings_hides_key() -> None:
     tts = KviccTTSProvider.from_settings(_KVICC)
     assert "secret-key" not in repr(tts)
-    with pytest.raises(NotImplementedError, match="pas encore intégrée"):
-        tts.synthesize("triangle")

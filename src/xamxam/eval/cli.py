@@ -20,7 +20,7 @@ from xamxam.eval.records import OutputPaths
 from xamxam.eval.report import build_report
 from xamxam.eval.run import run_evaluation
 from xamxam.pipeline import XamXamPipeline
-from xamxam.providers import ProviderName, create_stt_provider, create_tts_provider
+from xamxam.providers import ProviderName, create_providers
 
 logger = logging.getLogger("xamxam.eval")
 
@@ -62,15 +62,15 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _run(args: argparse.Namespace) -> None:
-    settings = Settings.from_env()
     paths = OutputPaths(args.output_dir)
+    tts, stt = create_providers(args.provider, Settings.from_env())
     result = run_evaluation(
         load_sentences(args.sentences),
         pipeline=XamXamPipeline.from_lexicon_file(
             args.lexicon, reading_language=args.reading_language
         ),
-        tts=create_tts_provider(args.provider, settings),
-        stt=create_stt_provider(args.provider, settings),
+        tts=tts,
+        stt=stt,
         paths=paths,
         text_column=args.text_column,
     )
@@ -97,7 +97,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             _run(args)
         else:
             _report(args)
-    except (XamXamError, NotImplementedError) as exc:
+    except XamXamError as exc:
         logger.error("%s", exc)
         return 1
     return 0
