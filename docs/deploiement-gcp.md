@@ -10,7 +10,8 @@ Deux étapes : tester en local avec ngrok, puis déployer sur Google Cloud Run.
 - Une application Meta avec le produit **WhatsApp** (API WhatsApp Cloud) : un numéro de test,
   son **Phone number ID**, un **jeton d'accès** et le **secret de l'application**
   (Paramètres de l'app → Général).
-- Une clé **Gemini** et le nom du modèle à utiliser (`GEMINI_MODEL`, aucun modèle par défaut).
+- Un modèle de langage open source : serveur auto-hébergé compatible OpenAI (voir
+  [auto-hebergement.md](auto-hebergement.md)) ; Bedrock reste possible avec des identifiants AWS.
 - La clé d'équipe **Kiriku** (`sk-kiriku-...`) et les URL des deux routes (voir `.env.example`).
 - `ffmpeg` installé (`sudo apt install ffmpeg`, `brew install ffmpeg`…).
 
@@ -22,7 +23,7 @@ Variables à définir (voir `.env.example`) :
 | `WHATSAPP_PHONE_NUMBER_ID` | identifiant du numéro qui envoie les réponses |
 | `WHATSAPP_VERIFY_TOKEN` | chaîne de votre choix, recopiée dans la console Meta |
 | `WHATSAPP_APP_SECRET` | vérifie la signature `X-Hub-Signature-256` des notifications |
-| `GEMINI_API_KEY`, `GEMINI_MODEL` | résolution des exercices |
+| `LLM_PROVIDER`, `SELFHOSTED_BASE_URL`, `SELFHOSTED_MODEL`, `SELFHOSTED_API_KEY` | résolution des exercices (voir [modeles.md](modeles.md)) |
 | `KVICC_TTS_URL`, `KVICC_STT_URL`, `KVICC_API_KEY` | voix et transcription Kiriku |
 | `LOG_HASH_KEY` | clé HMAC des identifiants dans les logs (`openssl rand -hex 32`) |
 | `UNLIMITED_NUMBERS` | numéros sans limite (équipe, démos), séparés par des virgules |
@@ -82,7 +83,7 @@ gcloud storage buckets add-iam-policy-binding gs://$BUCKET \
     --member=serviceAccount:$SA --role=roles/storage.objectAdmin
 
 # Secrets : une entrée par variable sensible (la valeur est lue sur l'entrée standard)
-for name in WHATSAPP_TOKEN WHATSAPP_VERIFY_TOKEN WHATSAPP_APP_SECRET GEMINI_API_KEY \
+for name in WHATSAPP_TOKEN WHATSAPP_VERIFY_TOKEN WHATSAPP_APP_SECRET SELFHOSTED_API_KEY \
             KVICC_API_KEY LOG_HASH_KEY UNLIMITED_NUMBERS; do
   read -rsp "$name : " value; echo
   printf '%s' "$value" | gcloud secrets create $name --data-file=-
@@ -101,8 +102,8 @@ gcloud run deploy $SERVICE \
     --no-cpu-throttling \
     --add-volume name=cache,type=cloud-storage,bucket=$BUCKET \
     --add-volume-mount volume=cache,mount-path=/cache \
-    --set-env-vars XAMXAM_CACHE_DIR=/cache,GEMINI_MODEL=<modele>,WHATSAPP_PHONE_NUMBER_ID=<id>,KVICC_TTS_URL=<url-tts>,KVICC_STT_URL=<url-stt> \
-    --set-secrets WHATSAPP_TOKEN=WHATSAPP_TOKEN:latest,WHATSAPP_VERIFY_TOKEN=WHATSAPP_VERIFY_TOKEN:latest,WHATSAPP_APP_SECRET=WHATSAPP_APP_SECRET:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,KVICC_API_KEY=KVICC_API_KEY:latest,LOG_HASH_KEY=LOG_HASH_KEY:latest,UNLIMITED_NUMBERS=UNLIMITED_NUMBERS:latest
+    --set-env-vars XAMXAM_CACHE_DIR=/cache,LLM_PROVIDER=selfhosted,SELFHOSTED_BASE_URL=<url>,SELFHOSTED_MODEL=<modele>,WHATSAPP_PHONE_NUMBER_ID=<id>,KVICC_TTS_URL=<url-tts>,KVICC_STT_URL=<url-stt> \
+    --set-secrets WHATSAPP_TOKEN=WHATSAPP_TOKEN:latest,WHATSAPP_VERIFY_TOKEN=WHATSAPP_VERIFY_TOKEN:latest,WHATSAPP_APP_SECRET=WHATSAPP_APP_SECRET:latest,SELFHOSTED_API_KEY=SELFHOSTED_API_KEY:latest,KVICC_API_KEY=KVICC_API_KEY:latest,LOG_HASH_KEY=LOG_HASH_KEY:latest,UNLIMITED_NUMBERS=UNLIMITED_NUMBERS:latest
 ```
 
 `--allow-unauthenticated` est nécessaire : Meta appelle le webhook sans identifiants Google.
@@ -125,7 +126,7 @@ gratuité mensuelle de 240 000 vCPU-secondes et 450 000 Gio-secondes) :
 | Secret Manager (7 secrets) | 0,06 $ par version active | ≈ 0,40 $ |
 | **Total** | | **≈ 47 $ par mois** |
 
-Ce total ne compte ni Gemini (facturé à l'usage), ni l'API WhatsApp, ni la sortie réseau.
+Ce total ne compte ni le modèle de langage, ni l'API WhatsApp, ni la sortie réseau.
 Pour un événement ponctuel, on peut repasser à `--min-instances 0` entre deux démonstrations
 (la file en mémoire est alors perdue à l'arrêt, mais pas les caches). Les tarifs évoluent :
 vérifiez la [page de tarification Cloud Run](https://cloud.google.com/run/pricing).

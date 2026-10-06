@@ -84,7 +84,17 @@ data "aws_iam_policy_document" "bot" {
     resources = [aws_ecr_repository.bot.arn]
   }
 
-  # 5. Agent SSM : Session Manager et réception des commandes (Run Command).
+  # 5. Bedrock : uniquement les modèles listés dans var.bedrock_model_arns.
+  dynamic "statement" {
+    for_each = length(var.bedrock_model_arns) > 0 ? [1] : []
+    content {
+      sid       = "AppelerModelesBedrock"
+      actions   = ["bedrock:InvokeModel"]
+      resources = var.bedrock_model_arns
+    }
+  }
+
+  # 6. Agent SSM : Session Manager et réception des commandes (Run Command).
   #    Ces actions n'acceptent pas de restriction par ressource.
   statement {
     sid = "AgentSSM"

@@ -19,7 +19,6 @@ classifiers = [
 ]
 dependencies = [
     "fastapi>=0.110",
-    "google-genai>=1.30",
     "httpx>=0.27",
     "pydantic>=2.6",
     "sympy>=1.12",
@@ -27,6 +26,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Provider Amazon Bedrock : seul composant qui dépend du SDK AWS (image Docker de production).
+bedrock = [
+    "boto3>=1.35",
+]
 dev = [
     "pytest>=8.0",
     "ruff>=0.6",

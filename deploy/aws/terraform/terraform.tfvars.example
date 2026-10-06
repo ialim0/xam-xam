@@ -4,5 +4,10 @@ availability_zone  = "eu-west-3a"
 domain             = "bot.example.org"
 backup_bucket_name = "xamxam-cache-backup-changez-moi"
 
+# Modèles Bedrock autorisés pour le rôle de l'instance (voir docs/modeles.md).
+bedrock_model_arns = [
+  "arn:aws:bedrock:eu-west-1::foundation-model/mistral.ministral-3-14b-instruct",
+]
+
 # Optionnel : figer l'AMI (sinon la dernière Amazon Linux 2023 au premier apply, puis figée).
 # ami_id = "ami-0123456789abcdef0"

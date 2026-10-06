@@ -81,6 +81,39 @@ variable "compose_sha256" {
   }
 }
 
+variable "bedrock_model_arns" {
+  description = <<-EOT
+    ARN des modèles Bedrock que l'instance peut appeler (bedrock:InvokeModel, utilisé par
+    l'API Converse). Exemple : arn:aws:bedrock:eu-west-1::foundation-model/mistral.ministral-3-14b-instruct.
+    Pour un profil d'inférence inter-régions, ajouter l'ARN du profil ET ceux du modèle dans
+    chaque région de destination. Liste vide : aucun accès à Bedrock.
+  EOT
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition = alltrue([
+      for arn in var.bedrock_model_arns :
+      can(regex("^arn:aws:bedrock:[a-z0-9-]+:(\\d{12})?:(foundation-model|inference-profile)/.+$", arn))
+    ])
+    error_message = "ARN Bedrock attendu (foundation-model ou inference-profile)."
+  }
+}
+
+variable "imds_hop_limit" {
+  description = <<-EOT
+    Limite de sauts IMDSv2. 1 : les conteneurs n'accèdent pas aux identifiants du rôle de
+    l'instance. 2 : nécessaire pour que le bot (dans Docker) appelle Bedrock avec ce rôle.
+  EOT
+  type        = number
+  default     = 2
+
+  validation {
+    condition     = contains([1, 2], var.imds_hop_limit)
+    error_message = "1 ou 2."
+  }
+}
+
 variable "backup_retention_days" {
   description = "Durée de conservation des anciennes versions des fichiers sauvegardés (jours)."
   type        = number

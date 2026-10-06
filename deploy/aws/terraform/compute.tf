@@ -15,12 +15,12 @@ resource "aws_instance" "bot" {
   vpc_security_group_ids = [aws_security_group.bot.id]
   iam_instance_profile   = aws_iam_instance_profile.bot.name
 
-  # IMDSv2 obligatoire ; une limite de 1 saut empêche les conteneurs de lire les
-  # identifiants du rôle de l'instance.
+  # IMDSv2 obligatoire. Limite de sauts : 2 pour que le bot, dans son conteneur, utilise le
+  # rôle de l'instance pour Bedrock ; 1 pour l'en empêcher (voir var.imds_hop_limit).
   metadata_options {
     http_endpoint               = "enabled"
     http_tokens                 = "required"
-    http_put_response_hop_limit = 1
+    http_put_response_hop_limit = var.imds_hop_limit
   }
 
   # Crédits CPU « standard » : pas de facturation au-delà du tarif horaire (une t3 en mode

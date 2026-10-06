@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterable
 
 from xamxam.llm.base import ProblemInput
+from xamxam.llm.schema import solution_json_schema
 
 SYSTEM_PROMPT_TEMPLATE = """\
 Tu es Xam-Xam, un professeur de mathématiques de collège au Sénégal. Un élève t'envoie
@@ -31,22 +33,54 @@ Champs :
   * aucun : pour tout autre exercice.
   Les longueurs sont des nombres dans la même unité. resultat contient seulement la valeur
   trouvée, sous forme exacte et/ou arrondie, par exemple « √52 ≈ 7,21 » ou « 4,5 ».
-- explication_wo : l'explication orale destinée à l'élève, en wolof.
+{explanation_fields}
 
-Consignes pour explication_wo :
+Consignes pour {explanation_field} :
 - Commence toujours par rappeler les données lues dans l'énoncé.
 - Explique ensuite la résolution étape par étape, puis donne la réponse finale.
-- Wolof simple, phrases courtes, ton encourageant, tutoiement.
+- {language_rule}, phrases courtes, ton encourageant, tutoiement.
 - Garde les termes scientifiques en français, écrits exactement comme dans cette liste :
   {lexicon_terms}
 - Écris les calculs en clair (« AB au carré »), sans symboles comme ², √ ou =.
 - {max_chars} caractères au maximum.
 """
 
+_WOLOF_FIELDS = (
+    "- explication_wo : l'explication orale destinée à l'élève, en wolof.\n"
+    "- explication_fr : laisse ce champ vide."
+)
+_FRENCH_FIELDS = (
+    "- explication_fr : l'explication orale destinée à l'élève, en français simple ;\n"
+    "  elle sera traduite en wolof ensuite.\n"
+    "- explication_wo : laisse ce champ vide."
+)
 
-def build_system_prompt(lexicon_terms: Iterable[str], max_chars: int) -> str:
+
+def build_system_prompt(
+    lexicon_terms: Iterable[str],
+    max_chars: int,
+    *,
+    translate_from_french: bool = False,
+    include_schema: bool = False,
+) -> str:
+    """Prompt système. `include_schema` ajoute le schéma JSON pour les modèles qui ne
+    reçoivent pas de contrainte de sortie (ni appel d'outils, ni response_format)."""
     terms = ", ".join(sorted(set(lexicon_terms))) or "(lexique vide)"
-    return SYSTEM_PROMPT_TEMPLATE.format(lexicon_terms=terms, max_chars=max_chars)
+    prompt = SYSTEM_PROMPT_TEMPLATE.format(
+        lexicon_terms=terms,
+        max_chars=max_chars,
+        explanation_fields=_FRENCH_FIELDS if translate_from_french else _WOLOF_FIELDS,
+        explanation_field="explication_fr" if translate_from_french else "explication_wo",
+        language_rule="Français simple" if translate_from_french else "Wolof simple",
+    )
+    if include_schema:
+        schema = json.dumps(solution_json_schema(), ensure_ascii=False)
+        prompt += (
+            "\nRéponds uniquement avec un objet JSON conforme à ce schéma, sans texte autour :\n"
+            + schema
+            + "\n"
+        )
+    return prompt
 
 
 def build_user_prompt(problem: ProblemInput) -> str:

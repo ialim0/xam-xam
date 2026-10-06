@@ -28,6 +28,7 @@ from xamxam.metrics import JobMetrics, timed, tracking
 from xamxam.pipeline import XamXamPipeline
 from xamxam.providers import RateLimiter, STTProvider, TTSProvider
 from xamxam.providers.kvicc import MAX_TTS_CHARS
+from xamxam.translate import TranslationError, Translator, translate_protected
 from xamxam.verify import VerificationStatus, verify_solution
 from xamxam.whatsapp.limits import MessageDeduplicator, UserRateLimiter
 from xamxam.whatsapp.messages import BotMessages
@@ -83,8 +84,11 @@ class XamXamBot:
         settings: BotSettings | None = None,
         messages: BotMessages | None = None,
         unlimited_numbers: frozenset[str] = frozenset(),
+        translator: Translator | None = None,
     ) -> None:
         self._meta = meta
+        # Mode traduction : le modèle explique en français, le traducteur produit le wolof.
+        self._translator = translator
         self._llm = llm
         self._stt = stt
         self._tts = tts
@@ -99,6 +103,11 @@ class XamXamBot:
         self._deduplicator = MessageDeduplicator()
         self._bursts: dict[str, _Burst] = {}
         self._tasks: set[asyncio.Task[None]] = set()
+
+    @property
+    def llm_info(self) -> dict[str, str]:
+        """Provider et modèle actifs (affichés par /health)."""
+        return {"provider": self._llm.name, "model": getattr(self._llm, "model", "")}
 
     # --- Réception ---------------------------------------------------------------
 
@@ -274,9 +283,25 @@ class XamXamBot:
             raise _RejectedError("hors_sujet", self._messages.off_topic)
         return solution
 
+    async def _wolof_explanation(self, solution: MathSolution) -> str:
+        if self._translator is None:
+            return solution.explanation_wo
+        try:
+            with timed("traduction"):
+                return await asyncio.to_thread(
+                    translate_protected,
+                    solution.explanation_fr,
+                    self._translator,
+                    self._pipeline.index,
+                )
+        except TranslationError as exc:
+            # Message de l'erreur : comptes de marqueurs uniquement, jamais le texte.
+            logger.warning("Traduction échouée : %s", exc)
+            raise _RejectedError("traduction_echouee", self._messages.apology) from exc
+
     async def _send_explanation(self, sender: str, solution: MathSolution) -> None:
         explanation = truncate_explanation(
-            solution.explanation_wo, self._settings.max_explanation_chars
+            await self._wolof_explanation(solution), self._settings.max_explanation_chars
         )
         text = self._pipeline.prepare(explanation).text
         with timed("tts"):

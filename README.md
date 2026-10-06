@@ -86,7 +86,7 @@ Copiez `.env.example` en `.env` et renseignez les clés dont vous disposez, puis
   pulaar et sérère) ;
 - sans `KVICC_*`, le TTS et le STT **mock** sont utilisés (audio silencieux, aller-retour exact) ;
 - sans `TIMALENS_API_KEY`, la génération vidéo est désactivée et un message l'indique ;
-- sans les variables du bot (`WHATSAPP_*`, `GEMINI_*`), le webhook répond 503 et `/health`
+- sans les variables du bot (`WHATSAPP_*`, `LLM_PROVIDER` et celles du modèle), le webhook répond 503 et `/health`
   liste les variables manquantes.
 
 Le client KVICC respecte les limites de l'API : il espace les requêtes (30 par minute et par clé,
@@ -105,7 +105,7 @@ accusé de réception immédiat, puis une **note vocale en wolof** qui explique 
 
 ```
 WhatsApp ─► webhook (signature vérifiée, 200 immédiat)
-              └─► tâche de fond : médias ─► STT Kiriku ─► Gemini (JSON validé)
+              └─► tâche de fond : médias ─► STT Kiriku ─► LLM open source (JSON validé)
                     ─► vérification sympy (Pythagore, Thalès ; une correction au plus)
                     ─► Xam-Xam ─► TTS Kiriku ─► OGG Opus ─► note vocale + réponse finale
 ```
@@ -114,8 +114,23 @@ WhatsApp ─► webhook (signature vérifiée, 200 immédiat)
   l'élève est prévenu si l'attente dépasse 30 s. Limite par élève configurable, numéros
   illimités pour l'équipe (`UNLIMITED_NUMBERS`).
 - Audios TTS et transcriptions STT en cache par empreinte.
-- Médias supprimés après traitement ; les logs ne contiennent que des identifiants hachés et
-  des métriques.
+- Uniquement des **modèles open source** (Apache 2.0) : Amazon Bedrock en déploiement principal,
+  ou un serveur auto-hébergé (vLLM, Ollama). Liste blanche versionnée, comparaison des modèles
+  avec `python -m xamxam.eval llm` : voir [docs/modeles.md](docs/modeles.md) et
+  [docs/auto-hebergement.md](docs/auto-hebergement.md).
+
+#### Confidentialité
+
+- Les **photos et transcriptions** sont envoyées au **LLM configuré** : Amazon Bedrock dans la
+  région indiquée par `BEDROCK_REGION`, ou votre serveur auto-hébergé (`SELFHOSTED_BASE_URL`).
+- Les **notes vocales** sont envoyées au **STT de Kiriku**, les **explications** au **TTS de
+  Kiriku**.
+- **Tous les messages** transitent par **WhatsApp (Meta)**.
+- Xam-Xam ne conserve **ni les photos ni les notes vocales** : elles sont supprimées à la fin du
+  traitement. Les journaux ne contiennent aucun contenu, seulement des identifiants hachés et
+  des métriques. **Exception** : les caches conservent les audios des explications (TTS) et
+  les **transcriptions des notes vocales** (STT), indexés par empreinte, sans numéro de
+  téléphone, et sauvegardés avec le cache.
 
 Déploiement sur AWS (EC2, Docker Compose, HTTPS par Caddy) : [docs/deploiement-aws.md](docs/deploiement-aws.md).
 Alternative Cloud Run et test local avec ngrok : [docs/deploiement-gcp.md](docs/deploiement-gcp.md).
@@ -140,7 +155,8 @@ src/xamxam/
 ├── providers/   interfaces TTSProvider / STTProvider, mock, API Kiriku du KVICC, cache audio
 ├── tts_alphabet.py  caractères acceptés par les voix TTS (wolof, pulaar)
 ├── timalens/    client vidéo optionnel (désactivé sans clé)
-├── llm/         interface LLMProvider, implémentation Gemini, prompt, schéma JSON
+├── llm/         interface LLMProvider, Bedrock (Converse), serveur compatible OpenAI, liste blanche
+├── translate/   traduction optionnelle français → wolof, termes du lexique protégés
 ├── verify/      recalcul sympy des résultats (Pythagore, Thalès)
 ├── media/       ffmpeg : OGG Opus, durée, découpage des audios
 ├── whatsapp/    webhook Meta, client Graph, orchestration du bot, limites, confidentialité

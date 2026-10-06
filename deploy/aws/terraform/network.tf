@@ -32,7 +32,7 @@ resource "aws_vpc_security_group_ingress_rule" "web" {
   cidr_ipv6         = each.value.cidr_ipv6
 }
 
-# Sortie : ECR, S3, SSM, Meta, Gemini, Kiriku, Let's Encrypt.
+# Sortie : ECR, S3, SSM, Bedrock, Meta, Kiriku, Let's Encrypt.
 resource "aws_vpc_security_group_egress_rule" "all" {
   security_group_id = aws_security_group.bot.id
   description       = "Sortie vers Internet"

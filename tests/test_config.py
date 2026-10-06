@@ -25,7 +25,14 @@ def test_settings_bot_variables() -> None:
     assert settings.cache_dir == Path("/cache")
     assert settings.whatsapp_graph_api_version == "v23.0"
     assert "WHATSAPP_APP_SECRET" not in settings.missing_bot_variables()
-    assert "GEMINI_MODEL" in settings.missing_bot_variables()
+    assert "LLM_PROVIDER" in settings.missing_bot_variables()
+    bedrock = Settings.from_env({"LLM_PROVIDER": "Bedrock", "TRANSLATE_FROM_FRENCH": "true"})
+    assert bedrock.llm_provider == "bedrock" and bedrock.translate_from_french
+    assert {"BEDROCK_MODEL_ID", "BEDROCK_REGION"} <= set(bedrock.missing_bot_variables())
+    selfhosted = Settings.from_env({"LLM_PROVIDER": "selfhosted", "SELFHOSTED_API_KEY": "k"})
+    assert "SELFHOSTED_MODEL" in selfhosted.missing_bot_variables()
+    assert "SELFHOSTED_API_KEY" not in selfhosted.missing_bot_variables()
+    assert "'k'" not in repr(selfhosted)
     text = repr(settings)
     assert "s3cret" not in text and "k3y" not in text and "221771234567" not in text
     assert normalize_phone_number("+221 (77) 123-45-67") == "221771234567"
@@ -65,3 +72,15 @@ def test_truncate_explanation() -> None:
     assert truncate_explanation("  Court.  ", 100) == "Court."
     assert truncate_explanation("Une phrase. Deux phrases longues.", 20) == "Une phrase."
     assert truncate_explanation("sanspoint" * 5, 10) == "sanspoints"
+
+
+def test_every_variable_read_by_settings_is_isolated_in_tests() -> None:
+    # Garde-fou : une variable lue par Settings mais absente de conftest._ENV_VARS
+    # laisserait l'environnement du développeur influencer les tests.
+    import re
+
+    import conftest
+
+    source = (Path(__file__).parents[1] / "src/xamxam/config.py").read_text(encoding="utf-8")
+    read = set(re.findall(r'_read\(env, "([A-Z0-9_]+)"\)', source))
+    assert read <= set(conftest._ENV_VARS), sorted(read - set(conftest._ENV_VARS))

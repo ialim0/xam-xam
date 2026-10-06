@@ -58,6 +58,8 @@ class MathSolution(_Model):
     key_terms: list[str] = Field(alias="termes_cles")
     explanation_wo: str = Field(alias="explication_wo")
     calculation: Calculation = Field(alias="calcul")
+    # Rempli seulement en mode traduction (TRANSLATE_FROM_FRENCH) : explication en français simple.
+    explanation_fr: str = Field(default="", alias="explication_fr")
 
 
 def _inline_refs(node: Any, definitions: dict[str, Any]) -> Any:

@@ -5,7 +5,8 @@ from __future__ import annotations
 import os
 
 from xamxam.config import Settings
-from xamxam.llm.gemini import GeminiProvider
+from xamxam.llm.base import LLMConfigurationError
+from xamxam.llm.factory import create_llm
 from xamxam.pipeline import XamXamPipeline
 from xamxam.providers import (
     CachedSTTProvider,
@@ -24,7 +25,13 @@ from xamxam.whatsapp.settings import BotSettings
 def build_bot(
     settings: Settings, pipeline: XamXamPipeline, bot_settings: BotSettings | None = None
 ) -> XamXamBot:
-    """Construit le bot réel (Meta, Gemini, Kiriku). Suppose missing_bot_variables() vide."""
+    """Construit le bot réel (Meta, LLM open source, Kiriku). Suppose missing_bot_variables()
+    vide. Lève LLMConfigurationError si le modèle n'est pas autorisé : le bot ne démarre pas."""
+    if settings.translate_from_french:
+        # Aucun modèle de traduction n'est encore choisi (voir docs/modeles.md).
+        raise LLMConfigurationError(
+            "TRANSLATE_FROM_FRENCH est activé, mais aucun traducteur n'est configuré."
+        )
     bot_settings = bot_settings or BotSettings.from_env()
     messages_path = os.environ.get("XAMXAM_MESSAGES_PATH", "").strip()
     messages = BotMessages.from_json_file(messages_path) if messages_path else BotMessages()
@@ -38,7 +45,7 @@ def build_bot(
             phone_number_id=settings.whatsapp_phone_number_id or "",
             api_version=settings.whatsapp_graph_api_version,
         ),
-        llm=GeminiProvider.from_settings(
+        llm=create_llm(
             settings,
             lexicon_terms=[term.term for term in pipeline.index.lexicon.terms],
             max_explanation_chars=bot_settings.max_explanation_chars,

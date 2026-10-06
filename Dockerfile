@@ -16,7 +16,8 @@ RUN apt-get update \
 WORKDIR /app
 COPY pyproject.toml README.md LICENSE ./
 COPY src ./src
-RUN pip install .
+# Extra « bedrock » : SDK AWS pour le provider LLM Bedrock (déploiement principal).
+RUN pip install ".[bedrock]"
 # Lexique et données, lus depuis le répertoire de travail.
 COPY data ./data
 

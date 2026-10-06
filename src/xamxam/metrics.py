@@ -1,7 +1,7 @@
 """Métriques d'un traitement, sans aucun contenu utilisateur.
 
 Une variable de contexte porte les métriques du traitement en cours : les appels aux
-services (Kiriku, Gemini, Meta) et aux caches s'y enregistrent d'eux-mêmes, y compris
+services (Kiriku, LLM, Meta) et aux caches s'y enregistrent d'eux-mêmes, y compris
 depuis les threads lancés par asyncio.to_thread, qui copient le contexte.
 """
 

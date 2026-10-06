@@ -1,4 +1,4 @@
-"""Tests de bout en bout simulés : Meta, Gemini et Kiriku remplacés par des doublures,
+"""Tests de bout en bout simulés : Meta, LLM et Kiriku remplacés par des doublures,
 ffmpeg réel (installé dans la CI)."""
 
 import functools
@@ -292,3 +292,57 @@ async def test_logs_contain_no_personal_content_and_media_are_deleted(
     assert '"outcome": "explication_envoyee"' in logs
     assert '"stt": ' in logs or '"durations_ms"' in logs
     assert set(Path(tempfile.gettempdir()).glob("xamxam-*")) == before
+
+
+class _Translator:
+    """Traducteur factice : remplace le français par du « wolof » en gardant les marqueurs."""
+
+    name = "faux"
+
+    def __init__(self, keep_markers: bool = True) -> None:
+        self.keep_markers = keep_markers
+        self.received: list[str] = []
+
+    def translate(self, text: str, *, source: str = "fr", target: str = "wo") -> str:
+        self.received.append(text)
+        translated = text.replace("Les données sont", "Données yi").replace("est", "mooy")
+        return translated if self.keep_markers else translated.replace("⟦T1⟧", "")
+
+
+def _french_solution():
+    return make_solution(
+        explication_wo="",
+        explication_fr="Les données sont AB = 4 cm. BC est l'hypoténuse.",
+    )
+
+
+async def test_translation_mode_protects_lexicon_terms(pipeline: XamXamPipeline) -> None:
+    graph = FakeGraph(media={"img-1": (JPEG, "image/jpeg")})
+    tts = RecordingTTS()
+    translator = _Translator()
+    bot = build_bot(graph, ScriptedLLM([_french_solution()]), pipeline=pipeline, tts=tts)
+    bot._translator = translator
+
+    await _deliver(bot, image_message())
+
+    _assert_explanation_sent(graph)
+    assert "hypoténuse" not in translator.received[0] and "⟦T1⟧" in translator.received[0]
+    [spoken] = tts.texts
+    assert spoken.startswith("Données yi A B égale quatre centimètres")
+    assert "ipoteniws" in spoken  # terme restauré puis réécrit par le lexique
+
+
+async def test_failed_translation_sends_apology_and_logs_without_content(
+    pipeline: XamXamPipeline, caplog: pytest.LogCaptureFixture
+) -> None:
+    graph = FakeGraph(media={"img-1": (JPEG, "image/jpeg")})
+    bot = build_bot(graph, ScriptedLLM([_french_solution()]), pipeline=pipeline)
+    bot._translator = _Translator(keep_markers=False)
+
+    with caplog.at_level(logging.INFO):
+        await _deliver(bot, image_message())
+
+    assert graph.texts == [MESSAGES.ack, MESSAGES.apology]
+    assert "Traduction échouée : Marqueurs de termes incorrects : 1 manquant(s)" in caplog.text
+    assert '"outcome": "traduction_echouee"' in caplog.text
+    assert "Les données" not in caplog.text and "Données yi" not in caplog.text

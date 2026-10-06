@@ -76,5 +76,59 @@ def test_webhook_without_configuration(pipeline: XamXamPipeline) -> None:
     assert client.get("/webhook", params={"hub.mode": "subscribe"}).status_code == 403
     health = client.get("/health").json()
     assert health["bot_ready"] is False
-    assert "GEMINI_MODEL" in health["missing_variables"]
+    assert "LLM_PROVIDER" in health["missing_variables"]
+    assert health["llm"] is None
     assert "LOG_HASH_KEY" not in health["missing_variables"]
+
+
+def test_health_reports_active_llm(client: TestClient) -> None:
+    assert client.get("/health").json()["llm"] == {"provider": "mock", "model": "scripted"}
+
+
+BOT_SETTINGS = {
+    "whatsapp_token": "t",
+    "whatsapp_phone_number_id": "1",
+    "whatsapp_verify_token": "v",
+    "whatsapp_app_secret": "s",
+}
+
+
+def test_bot_refuses_to_start_with_unlisted_model(pipeline: XamXamPipeline) -> None:
+    from xamxam.llm import LLMConfigurationError
+
+    settings = Settings(
+        **BOT_SETTINGS,
+        llm_provider="selfhosted",
+        selfhosted_base_url="http://vllm:8000/v1",
+        selfhosted_model="modele/non-autorise",
+    )
+    with pytest.raises(LLMConfigurationError, match="absent de la liste blanche"):
+        create_app(settings, pipeline=pipeline, tts=MockTTSProvider())
+
+
+def test_bot_refuses_translation_mode_without_translator(pipeline: XamXamPipeline) -> None:
+    from xamxam.llm import LLMConfigurationError
+
+    settings = Settings(
+        **BOT_SETTINGS,
+        llm_provider="selfhosted",
+        selfhosted_base_url="http://vllm:8000/v1",
+        selfhosted_model="Qwen/Qwen3-VL-8B-Instruct",
+        translate_from_french=True,
+    )
+    with pytest.raises(LLMConfigurationError, match="aucun traducteur"):
+        create_app(settings, pipeline=pipeline, tts=MockTTSProvider())
+
+
+def test_bot_starts_with_allowed_selfhosted_model(pipeline: XamXamPipeline) -> None:
+    settings = Settings(
+        **BOT_SETTINGS,
+        llm_provider="selfhosted",
+        selfhosted_base_url="http://vllm:8000/v1",
+        selfhosted_model="Qwen/Qwen3-VL-8B-Instruct",
+    )
+    health = TestClient(create_app(settings, pipeline=pipeline, tts=MockTTSProvider()))
+    assert health.get("/health").json()["llm"] == {
+        "provider": "selfhosted",
+        "model": "Qwen/Qwen3-VL-8B-Instruct",
+    }

@@ -65,6 +65,7 @@ def create_app(
             "status": "ok",
             "tts": tts.name,
             "bot_ready": bot is not None,
+            "llm": bot.llm_info if bot is not None else None,
             "missing_variables": missing,
         }
 

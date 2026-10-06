@@ -25,7 +25,8 @@ Le code applicatif ne dépend pas d'AWS : il lit ses variables d'environnement e
   **Docker** avec `buildx`, et le [plugin Session Manager](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html)
   pour ouvrir une session sur l'instance.
 - Un nom de domaine dont vous gérez le DNS (ex. `bot.example.org`).
-- Les valeurs listées à l'étape 3 (Meta, Gemini, Kiriku).
+- Les valeurs listées à l'étape 3 (Meta, modèle de langage, Kiriku), et l'accès au modèle
+  Bedrock choisi dans la région voulue (voir [modeles.md](modeles.md)).
 
 Permissions de **votre** utilisateur (et non de l'instance) :
 
@@ -59,7 +60,7 @@ Ce qui est créé :
 | Volume EBS `/cache` | gp3 chiffré, **séparé du disque système**, monté par UUID, formaté seulement s'il est vierge |
 | Bucket S3 | privé (accès public bloqué), chiffré, versionné, HTTPS obligatoire ; `cache/` (sauvegardes) et `deploy/` (paquets) |
 | Dépôt ECR | privé, tags immuables, analyse des images, 10 images conservées |
-| Rôle IAM | strict minimum, détaillé ci-dessous |
+| Rôle IAM | strict minimum, détaillé ci-dessous ; `bedrock:InvokeModel` limité aux ARN de `bedrock_model_arns` |
 
 L'AMI est la dernière Amazon Linux 2023 au premier `apply`, puis figée
 (`ignore_changes = [ami, user_data]`) : un `apply` futur ne remplace jamais l'instance. Pour la
@@ -94,7 +95,7 @@ REGION=eu-west-3
 
 # Secrets (SecureString)
 for name in WHATSAPP_TOKEN WHATSAPP_VERIFY_TOKEN WHATSAPP_APP_SECRET \
-            GEMINI_API_KEY KVICC_API_KEY LOG_HASH_KEY UNLIMITED_NUMBERS; do
+            KVICC_API_KEY LOG_HASH_KEY UNLIMITED_NUMBERS; do
   read -rsp "$name : " value; echo
   printf '%s' "$value" | aws ssm put-parameter --region "$REGION" \
       --name "/xamxam/$name" --type SecureString --value file:///dev/stdin --overwrite
@@ -103,7 +104,11 @@ unset value
 
 # Configuration non secrète (String)
 aws ssm put-parameter --region "$REGION" --type String --overwrite \
-    --name /xamxam/GEMINI_MODEL --value "<nom-du-modele>"
+    --name /xamxam/LLM_PROVIDER --value bedrock
+aws ssm put-parameter --region "$REGION" --type String --overwrite \
+    --name /xamxam/BEDROCK_MODEL_ID --value "mistral.ministral-3-14b-instruct"
+aws ssm put-parameter --region "$REGION" --type String --overwrite \
+    --name /xamxam/BEDROCK_REGION --value "eu-west-1"
 aws ssm put-parameter --region "$REGION" --type String --overwrite \
     --name /xamxam/WHATSAPP_PHONE_NUMBER_ID --value "<phone-number-id>"
 aws ssm put-parameter --region "$REGION" --type String --overwrite \
@@ -184,10 +189,23 @@ La politique gérée `AmazonSSMManagedInstanceCore` n'est **pas** utilisée : el
 | Paramètres du projet | `ssm:GetParametersByPath`, `ssm:GetParameters`, `ssm:GetParameter` | `parameter/xamxam`, `parameter/xamxam/*` |
 | Déchiffrement | `kms:Decrypt`, seulement si `kms:ViaService = ssm.eu-west-3.amazonaws.com` | clé gérée `aws/ssm` |
 | Bucket de sauvegarde | `s3:ListBucket` ; `s3:GetObject`, `s3:PutObject` (pas de suppression) | ce bucket uniquement |
+| Bedrock | `bedrock:InvokeModel` (utilisé par l'API Converse) | ARN listés dans `bedrock_model_arns` uniquement |
 | Image | `ecr:GetAuthorizationToken` (`*`, imposé par AWS) ; `ecr:BatchGetImage`, `ecr:GetDownloadUrlForLayer`, `ecr:BatchCheckLayerAvailability` | ce dépôt uniquement |
 | Agent SSM | `ssm:UpdateInstanceInformation`, `ssmmessages:{Create,Open}{Control,Data}Channel`, `ec2messages:{Acknowledge,Delete,Fail}Message`, `ec2messages:GetEndpoint`, `ec2messages:GetMessages`, `ec2messages:SendReply` | `*` (imposé par AWS) |
 
 Pas de `ssm:SendCommand`, pas de suppression S3, aucun accès aux autres paramètres ou buckets.
+
+### Bedrock et accès du conteneur au rôle
+
+Le bot tourne dans un conteneur : pour qu'il appelle Bedrock avec le rôle de l'instance, la
+limite de sauts IMDSv2 vaut **2** (`imds_hop_limit`). Conséquence : le conteneur peut obtenir
+les identifiants temporaires du rôle, donc toutes les permissions ci-dessus. Avec
+`imds_hop_limit = 1`, le conteneur n'y a plus accès, mais Bedrock n'est alors utilisable
+qu'avec une autre source d'identifiants (non prévue ici).
+
+Région : aucun modèle open source de la liste blanche n'est proposé dans `eu-west-3` (Paris).
+Utilisez par exemple `BEDROCK_REGION=eu-west-1` (Irlande) et l'ARN correspondant dans
+`bedrock_model_arns` ; les photos et transcriptions sont alors traitées en Irlande (UE).
 
 ## Sauvegarde et restauration du cache
 
@@ -233,7 +251,7 @@ Région eu-west-3 (Paris), à la demande, tarifs consultés en octobre 2026 :
 | SSM Parameter Store (paramètres standard) | gratuit | 0 $ |
 | **Total** | | **≈ 24 $ par mois** |
 
-Non inclus : Gemini (à l'usage), l'API WhatsApp, et le trafic sortant au-delà de la franchise
+Non inclus : Bedrock (facturé aux jetons, voir `python -m xamxam.eval llm`), l'API WhatsApp, et le trafic sortant au-delà de la franchise
 mensuelle d'AWS. Les crédits CPU « standard » évitent toute facturation de dépassement ; une
 instance réservée ou un Savings Plan d'un an réduit le poste EC2 d'environ un tiers.
 

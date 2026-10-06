@@ -1,4 +1,4 @@
-"""Commande en ligne : `python -m xamxam.eval run` et `python -m xamxam.eval report`."""
+"""Commande en ligne : `python -m xamxam.eval run`, `report` et `llm`."""
 
 from __future__ import annotations
 
@@ -74,6 +74,23 @@ def build_parser() -> argparse.ArgumentParser:
 
     report = commands.add_parser("report", help="Calcule les métriques et écrit le rapport.")
     report.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
+
+    llm = commands.add_parser("llm", help="Compare des modèles de langage sur des photos.")
+    llm.add_argument("--photos", type=Path, required=True, help="Dossier des photos d'exercices.")
+    llm.add_argument(
+        "--verite", type=Path, help="Vérité terrain (défaut : <photos>/verite_terrain.csv)."
+    )
+    llm.add_argument(
+        "--configs", type=Path, required=True, help="Configurations à comparer (JSON)."
+    )
+    llm.add_argument("--repetitions", type=int, default=3)
+    llm.add_argument("--lexicon", type=Path, default=DEFAULT_LEXICON_PATH)
+    llm.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR / "llm")
+    llm.add_argument(
+        "--allow-unlisted",
+        action="store_true",
+        help="Autorise des modèles absents de la liste blanche (évaluation de candidats).",
+    )
     return parser
 
 
@@ -117,12 +134,53 @@ def _report(args: argparse.Namespace) -> None:
     logger.info("Rapport écrit : %s et %s", paths.ranking_csv, paths.summary_md)
 
 
+def _llm(args: argparse.Namespace) -> None:
+    from xamxam.eval.llm_bench import (
+        ConfiguredModel,
+        load_configs,
+        load_ground_truth,
+        run_llm_benchmark,
+        write_outputs,
+    )
+    from xamxam.lexicon import load_lexicon
+    from xamxam.llm.factory import build_llm
+    from xamxam.whatsapp.settings import BotSettings
+
+    settings = Settings.from_env()
+    terms = [term.term for term in load_lexicon(args.lexicon).terms]
+    max_chars = BotSettings().max_explanation_chars
+    models = [
+        ConfiguredModel(
+            config,
+            build_llm(
+                config.provider,
+                config.model,
+                lexicon_terms=terms,
+                max_explanation_chars=max_chars,
+                region=config.region,
+                base_url=config.base_url,
+                api_key=settings.selfhosted_api_key,
+                enforce_allowlist=not args.allow_unlisted,
+            ),
+        )
+        for config in load_configs(args.configs)
+    ]
+    cases = load_ground_truth(args.verite or args.photos / "verite_terrain.csv")
+    records = run_llm_benchmark(
+        cases, args.photos, models, repetitions=args.repetitions, on_progress=logger.info
+    )
+    write_outputs(records, args.output_dir, repetitions=args.repetitions)
+    logger.info("Rapport écrit : %s", args.output_dir / "rapport.md")
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     args = build_parser().parse_args(argv)
     try:
         if args.command == "run":
             _run(args)
+        elif args.command == "llm":
+            _llm(args)
         else:
             _report(args)
     except XamXamError as exc:
