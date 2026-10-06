@@ -1,0 +1,46 @@
+{
+  "version": "0.0-exemple",
+  "language": "wo",
+  "terms": [
+    {
+      "term": "triangle",
+      "pronunciation": "tiriyaangal",
+      "notion": "pythagore",
+      "aliases": ["triangles"],
+      "validated_by": "",
+      "notes": "EXEMPLE non validé : à remplacer par le lexique v0."
+    },
+    {
+      "term": "triangle rectangle",
+      "pronunciation": "tiriyaangal regtaangal",
+      "notion": "pythagore",
+      "aliases": ["triangles rectangles"],
+      "validated_by": "",
+      "notes": "EXEMPLE non validé. Terme composé : prioritaire sur « triangle »."
+    },
+    {
+      "term": "hypoténuse",
+      "pronunciation": "ipoteniws",
+      "notion": "pythagore",
+      "aliases": [],
+      "validated_by": "",
+      "notes": "EXEMPLE non validé."
+    },
+    {
+      "term": "théorème de Pythagore",
+      "pronunciation": "teyorem bu Pitagor",
+      "notion": "pythagore",
+      "aliases": [],
+      "validated_by": "",
+      "notes": "EXEMPLE non validé."
+    },
+    {
+      "term": "parallèle",
+      "pronunciation": "paralel",
+      "notion": "thales",
+      "aliases": ["parallèles"],
+      "validated_by": "",
+      "notes": "EXEMPLE non validé."
+    }
+  ]
+}
