@@ -1,0 +1,19 @@
+[Unit]
+Description=Xam-Xam : bot et Caddy (Docker Compose)
+Requires=docker.service xamxam-secrets.service
+After=docker.service xamxam-secrets.service
+RequiresMountsFor=/cache
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/xamxam
+EnvironmentFile=/etc/xamxam/xamxam.env
+# Recréation forcée : au démarrage de l'hôte, Docker a pu relancer les conteneurs avant le
+# chargement des secrets. On attend que le bot soit en bonne santé.
+ExecStart=/usr/bin/docker compose up -d --force-recreate --remove-orphans --wait --wait-timeout 180
+ExecStop=/usr/bin/docker compose down
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target

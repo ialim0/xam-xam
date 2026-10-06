@@ -1,0 +1,15 @@
+# Reverse proxy HTTPS vers le bot. Certificat Let's Encrypt automatique pour XAMXAM_DOMAIN
+# (le port 80 doit être joignable depuis Internet pour la validation).
+{
+	{$CADDY_EXTRA_GLOBAL_OPTIONS}
+}
+
+{$XAMXAM_DOMAIN} {
+	# Les notifications de Meta sont petites : on refuse les corps volumineux.
+	request_body {
+		max_size 1MB
+	}
+	reverse_proxy bot:8080
+	header -Server
+	log
+}

@@ -1,0 +1,8 @@
+# Copier en terraform.tfvars (ignoré par Git) et adapter. Aucune valeur réelle ici.
+region             = "eu-west-3"
+availability_zone  = "eu-west-3a"
+domain             = "bot.example.org"
+backup_bucket_name = "xamxam-cache-backup-changez-moi"
+
+# Optionnel : figer l'AMI (sinon la dernière Amazon Linux 2023 au premier apply, puis figée).
+# ami_id = "ami-0123456789abcdef0"

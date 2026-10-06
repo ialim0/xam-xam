@@ -117,8 +117,8 @@ WhatsApp ─► webhook (signature vérifiée, 200 immédiat)
 - Médias supprimés après traitement ; les logs ne contiennent que des identifiants hachés et
   des métriques.
 
-Mise en route locale avec ngrok et déploiement sur Cloud Run :
-[docs/deploiement.md](docs/deploiement.md).
+Déploiement sur AWS (EC2, Docker Compose, HTTPS par Caddy) : [docs/deploiement-aws.md](docs/deploiement-aws.md).
+Alternative Cloud Run et test local avec ngrok : [docs/deploiement-gcp.md](docs/deploiement-gcp.md).
 
 ### Serveur de développement
 
@@ -131,6 +131,7 @@ curl -X POST localhost:8000/dev/speak -H 'Content-Type: application/json' \
 ## Architecture
 
 ```
+deploy/aws/   Docker Compose, Caddy, scripts systemd, Terraform (EC2, EBS, S3, ECR, IAM)
 src/xamxam/
 ├── lexicon/     schéma pydantic, chargement, recherche (termes composés prioritaires)
 ├── normalize/   expressions mathématiques → mots, tables de lecture par langue

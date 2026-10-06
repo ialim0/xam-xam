@@ -1,0 +1,58 @@
+#!/bin/bash
+# Premier démarrage de l'instance (Amazon Linux 2023). Prépare le système ; l'application
+# elle-même est installée par deploy/aws/deploy.sh (SSM Run Command).
+# Gabarit Terraform : les valeurs Terraform sont interpolées ; un dollar doublé échappe bash.
+set -euxo pipefail
+
+# --- Docker, Compose (version figée, empreinte vérifiée), aide d'authentification ECR -------
+dnf install -y docker amazon-ecr-credential-helper
+systemctl enable --now docker
+
+compose_dir=/usr/local/lib/docker/cli-plugins
+install -d -m 0755 "$compose_dir"
+curl -fsSL --retry 5 -o /tmp/docker-compose \
+	"https://github.com/docker/compose/releases/download/${compose_version}/docker-compose-linux-x86_64"
+echo "${compose_sha256}  /tmp/docker-compose" | sha256sum --check --strict
+install -m 0755 /tmp/docker-compose "$compose_dir/docker-compose"
+rm -f /tmp/docker-compose
+docker compose version
+
+# Docker s'authentifie auprès d'ECR via le rôle de l'instance : aucun jeton stocké sur disque.
+install -d -m 0700 /root/.docker
+cat >/root/.docker/config.json <<'JSON'
+{"credHelpers": {"${registry}": "ecr-login"}}
+JSON
+
+# --- Volume EBS du cache, séparé du disque système -----------------------------------------
+# Sur les instances Nitro, le volume apparaît en NVMe ; son numéro de série est l'ID du volume.
+volume_serial="$(echo "${cache_volume_id}" | tr -d '-')"
+device="/dev/disk/by-id/nvme-Amazon_Elastic_Block_Store_$${volume_serial}"
+for _ in $(seq 1 60); do
+	[[ -e "$device" ]] && break
+	sleep 5
+done
+[[ -e "$device" ]] || { echo "Volume du cache introuvable" >&2; exit 1; }
+
+# Formatage uniquement si le volume est vierge : un volume réattaché garde ses données.
+if ! blkid "$device" >/dev/null 2>&1; then
+	mkfs.xfs -L xamxam-cache "$device"
+fi
+uuid="$(blkid -s UUID -o value "$device")"
+install -d -m 0755 /cache
+grep -q "$uuid" /etc/fstab || echo "UUID=$uuid /cache xfs defaults,nofail 0 2" >>/etc/fstab
+mount -a
+chown ${container_uid}:${container_uid} /cache
+
+# --- Configuration non secrète, lue par systemd et Docker Compose ---------------------------
+install -d -m 0755 /etc/xamxam /opt/xamxam
+cat >/etc/xamxam/xamxam.env <<ENV
+AWS_REGION=${region}
+XAMXAM_DOMAIN=${domain}
+XAMXAM_BACKUP_BUCKET=${bucket}
+XAMXAM_SSM_PREFIX=${ssm_prefix}
+XAMXAM_CONTAINER_UID=${container_uid}
+XAMXAM_CACHE_PATH=/cache
+XAMXAM_SECRETS_PATH=/run/xamxam
+XAMXAM_IMAGE=
+ENV
+chmod 0644 /etc/xamxam/xamxam.env

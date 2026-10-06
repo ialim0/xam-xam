@@ -24,7 +24,9 @@ class AudioError(XamXamError):
 def _binary(name: str) -> str:
     path = shutil.which(name)
     if path is None:
-        raise AudioError(f"{name} est introuvable : installez ffmpeg (voir docs/deploiement.md).")
+        raise AudioError(
+            f"{name} est introuvable : installez ffmpeg (voir docs/deploiement-aws.md)."
+        )
     return path
 
 

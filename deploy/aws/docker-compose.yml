@@ -1,0 +1,81 @@
+# Production sur EC2 : le bot Xam-Xam derrière Caddy (HTTPS automatique).
+# Variables lues depuis /etc/xamxam/xamxam.env (aucun secret) : XAMXAM_IMAGE, XAMXAM_DOMAIN.
+# Les secrets arrivent par /run/xamxam (tmpfs), jamais par l'environnement de Docker.
+name: xamxam
+
+services:
+  bot:
+    image: ${XAMXAM_IMAGE:?XAMXAM_IMAGE non définie}
+    restart: unless-stopped
+    # entrypoint.sh exporte les secrets montés en lecture seule, puis lance le serveur.
+    entrypoint: ["/bin/sh", "/opt/xamxam/entrypoint.sh"]
+    command:
+      - uvicorn
+      - --factory
+      - xamxam.whatsapp.app:create_app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+      - --proxy-headers
+      - --forwarded-allow-ips
+      - "*"
+    environment:
+      XAMXAM_CACHE_DIR: /cache
+      XAMXAM_SECRETS_DIR: /run/secrets/xamxam
+    volumes:
+      - ${XAMXAM_CACHE_PATH:-/cache}:/cache
+      # Syntaxe longue : si les secrets ne sont pas encore chargés (démarrage de l'hôte),
+      # Docker ne crée pas de dossier vide et le conteneur attend xamxam.service.
+      - type: bind
+        source: ${XAMXAM_SECRETS_PATH:-/run/xamxam}
+        target: /run/secrets/xamxam
+        read_only: true
+        bind:
+          create_host_path: false
+      - ./entrypoint.sh:/opt/xamxam/entrypoint.sh:ro
+    # Durcissement : système de fichiers en lecture seule, /tmp en mémoire (médias temporaires).
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    expose: ["8080"]
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=3)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "5"}
+
+  caddy:
+    image: caddy:2.11.7-alpine
+    restart: unless-stopped
+    depends_on:
+      bot:
+        condition: service_healthy
+    ports:
+      - "${XAMXAM_HTTP_PORT:-80}:80"
+      - "${XAMXAM_HTTPS_PORT:-443}:443"
+    environment:
+      XAMXAM_DOMAIN: ${XAMXAM_DOMAIN:?XAMXAM_DOMAIN non définie}
+      # Vide en production ; « local_certs » pour un test local sans Let's Encrypt.
+      CADDY_EXTRA_GLOBAL_OPTIONS: ${CADDY_EXTRA_GLOBAL_OPTIONS:-}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "5"}
+
+volumes:
+  caddy_data:
+  caddy_config:

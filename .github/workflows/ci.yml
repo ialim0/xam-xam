@@ -26,3 +26,18 @@ jobs:
         run: ruff format --check .
       - name: Tests
         run: pytest
+
+  terraform:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: deploy/aws/terraform
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v4
+      - name: Format
+        run: terraform fmt -recursive -check
+      - name: Validation (aucun accès à un compte AWS)
+        run: |
+          terraform init -backend=false -input=false
+          terraform validate

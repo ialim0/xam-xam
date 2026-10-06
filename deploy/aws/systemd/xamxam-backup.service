@@ -1,0 +1,12 @@
+[Unit]
+Description=Xam-Xam : sauvegarde du cache vers S3
+Wants=network-online.target
+After=network-online.target
+RequiresMountsFor=/cache
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/xamxam/xamxam.env
+ExecStart=/opt/xamxam/backup-cache.sh
+Nice=10
+IOSchedulingClass=idle

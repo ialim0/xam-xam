@@ -1,0 +1,11 @@
+[Unit]
+Description=Xam-Xam : sauvegarde quotidienne du cache
+
+[Timer]
+OnCalendar=*-*-* 03:00:00
+RandomizedDelaySec=30min
+# Rattrape une sauvegarde manquée si l'instance était arrêtée.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

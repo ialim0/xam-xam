@@ -1,4 +1,7 @@
-# Déploiement du bot WhatsApp Xam-Xam
+# Déploiement du bot WhatsApp Xam-Xam sur Google Cloud Run (alternative)
+
+> **Le déploiement principal est désormais AWS (EC2, Docker Compose, Caddy) :
+> voir [deploiement-aws.md](deploiement-aws.md).** Ce guide reste valable pour Cloud Run.
 
 Deux étapes : tester en local avec ngrok, puis déployer sur Google Cloud Run.
 
