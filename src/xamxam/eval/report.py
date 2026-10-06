@@ -23,6 +23,7 @@ from xamxam.eval.metrics import (
 from xamxam.eval.records import (
     Condition,
     OutputPaths,
+    RunInfo,
     TranscriptionRecord,
     read_terms,
     read_transcriptions,
@@ -44,6 +45,7 @@ class Report:
     ranking: list[TermStats]
     ratings: list[HumanRating]
     transcriptions: list[TranscriptionRecord]
+    run_info: RunInfo | None = None
 
 
 def build_report(paths: OutputPaths) -> Report:
@@ -51,7 +53,9 @@ def build_report(paths: OutputPaths) -> Report:
     transcriptions = read_transcriptions(paths.transcriptions_csv)
     ratings = load_human_ratings(paths.human_csv)
     stats = compute_term_stats(read_terms(paths.terms_csv), ratings)
-    report = Report(rank_terms(stats.values()), ratings, transcriptions)
+    report = Report(
+        rank_terms(stats.values()), ratings, transcriptions, RunInfo.read(paths.run_info_json)
+    )
     write_ranking(paths.ranking_csv, report.ranking)
     paths.summary_md.parent.mkdir(parents=True, exist_ok=True)
     paths.summary_md.write_text(render_summary(report), encoding="utf-8")
@@ -103,6 +107,44 @@ def _table(header: list[str]) -> list[str]:
     return [_row(*header), _row(*(["---"] * len(header)))]
 
 
+_NUMBER_LANGUAGES = {"fr": "français", "wo": "wolof"}
+_LEXICON_STATUSES = {
+    "valide": "prononciations validées uniquement",
+    "brouillon": "prononciations validées et brouillons",
+}
+
+
+def _run_parameters(info: RunInfo | None) -> list[str]:
+    """Paramètres du run : langue des nombres et origine des prononciations appliquées."""
+    if info is None:
+        return ["_Paramètres du run inconnus (run_info.json absent)._", ""]
+    validated = info.applied.get("valide")
+    draft = info.applied.get("brouillon")
+
+    def describe(applied) -> str:  # type: ignore[no-untyped-def]
+        if applied is None or applied.occurrences == 0:
+            return "0 occurrence"
+        return f"{applied.occurrences} occurrence(s), {len(applied.terms)} terme(s)"
+
+    number_language = _NUMBER_LANGUAGES.get(info.number_language, info.number_language)
+    lexicon_status = _LEXICON_STATUSES.get(info.lexicon_status, info.lexicon_status)
+    lines = [
+        "## Paramètres du run",
+        "",
+        f"- Langue des nombres : **{number_language}** "
+        f"(`--number-language {info.number_language}`)",
+        f"- Lexique : **{lexicon_status}** (`--lexique-statut {info.lexicon_status}`)",
+        f"- Termes appliqués avec une prononciation **validée** : {describe(validated)}",
+        f"- Termes appliqués avec une prononciation **brouillon** : {describe(draft)}",
+    ]
+    if draft is not None and draft.occurrences:
+        lines.append(
+            "- ⚠️ Des prononciations brouillon ont été appliquées : les résultats de la "
+            "condition « lexique » ne reflètent pas un lexique validé."
+        )
+    return [*lines, ""]
+
+
 def render_summary(report: Report) -> str:
     sentence_count = len({t.sentence_id for t in report.transcriptions})
     conditions = list(Condition)
@@ -115,6 +157,7 @@ def render_summary(report: Report) -> str:
         + ", ".join(f"**{c.label}** (`{c}`)" for c in conditions)
         + ". Chacune ajoute une couche à la précédente.",
         "",
+        *_run_parameters(report.run_info),
         "## Taux d'erreur sur les termes cibles",
         "",
         *_table(["Source", *(c.label for c in conditions)]),

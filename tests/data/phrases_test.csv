@@ -1,0 +1,6 @@
+id,notion,contexte,fr,wo,termes_cibles
+P001,pythagore,énoncé d'exercice,"ABC est un triangle rectangle en A, avec AB = 3 cm et AC = 4 cm.","ABC ab triangle rectangle la ci A, AB = 3 cm, AC = 4 cm.",triangle rectangle
+P002,pythagore,cours,"Dans un triangle rectangle, BC² = AB² + AC².","Ci benn triangle rectangle, BC² = AB² + AC².",triangle rectangle
+P003,pythagore,correction,"L'hypoténuse mesure √25 = 5 cm.","Hypoténuse bi mi ngi tollu √25 = 5 cm.",hypoténuse
+T001,thales,cours,"Les droites (MN) et (BC) sont parallèles.","Droite (MN) ak (BC) dañoo parallèle.",parallèle
+C001,concret,vie courante,"Une échelle de 2,5 m contre un mur : on utilise le théorème de Pythagore.","Benn echelle bu tollu 2,5 m ci kaw miir : dañuy jëfandikoo théorème de Pythagore.",théorème de Pythagore

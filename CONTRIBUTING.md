@@ -12,7 +12,11 @@ prononciations** dans le lexique.
    - si possible un enregistrement audio (note vocale) de la bonne prononciation ;
    - la phrase d'exemple dans laquelle le TTS se trompe.
 4. Un **locuteur natif** relit la proposition. Une fois validée, il ajoute son nom (ou pseudonyme)
-   dans `validated_by` et la PR peut être fusionnée.
+   dans `validated_by`, passe `statut` à `valide`, et la PR peut être fusionnée.
+
+Pour les termes cibles du benchmark, le plus simple est le fichier
+`data/lexicon/termes_cibles_a_valider.csv` : remplir `prononciation_validee` et `validateur`, puis
+`python -m xamxam.lexicon import-validation` (voir [docs/benchmark.md](docs/benchmark.md)).
 
 ### Format d'une entrée
 
@@ -22,6 +26,7 @@ prononciations** dans le lexique.
   "pronunciation": "tiriyaangal regtaangal",
   "notion": "pythagore",
   "aliases": ["triangles rectangles"],
+  "statut": "brouillon",
   "validated_by": "",
   "notes": ""
 }
@@ -30,7 +35,8 @@ prononciations** dans le lexique.
 | Champ | Obligatoire | Description |
 | --- | --- | --- |
 | `term` | oui | Graphie du terme telle qu'elle apparaît dans les textes. |
-| `pronunciation` | oui | Réécriture à envoyer au TTS pour obtenir la bonne prononciation, en orthographe wolof. |
+| `pronunciation` | non | Réécriture à envoyer au TTS, en orthographe wolof. Sans prononciation, le terme n'est jamais réécrit. |
+| `statut` | oui | `brouillon` ou `valide`. Seules les prononciations `valide` sont appliquées par défaut (bot et évaluation) ; `valide` exige une prononciation et un validateur. |
 | `notion` | non | Notion du programme : `pythagore`, `thales`, `concret`… |
 | `aliases` | non | Autres graphies à reconnaître (pluriel, variantes). |
 | `validated_by` | non | Locuteur natif qui a validé. **Vide = non validé.** |

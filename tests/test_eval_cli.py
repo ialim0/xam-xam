@@ -11,6 +11,7 @@ from xamxam.eval.metrics import LAYERS, Source
 from xamxam.eval.records import Condition, OutputPaths
 from xamxam.eval.report import build_report
 from xamxam.eval.run import run_evaluation
+from xamxam.lexicon import VALIDATED_AND_DRAFT
 from xamxam.pipeline import XamXamPipeline
 from xamxam.providers import MockSTTProvider, MockTTSProvider
 
@@ -121,7 +122,9 @@ def test_each_layer_contribution_is_measured(tmp_path: Path) -> None:
     paths = OutputPaths(tmp_path)
     run_evaluation(
         load_sentences(SENTENCES_PATH),
-        pipeline=XamXamPipeline.from_lexicon_file(LEXICON_PATH),
+        pipeline=XamXamPipeline.from_lexicon_file(
+            LEXICON_PATH, applied_statuses=VALIDATED_AND_DRAFT
+        ),
         tts=MockTTSProvider(),
         stt=MockSTTProvider(stt_transform),
         paths=paths,
@@ -132,3 +135,37 @@ def test_each_layer_contribution_is_measured(tmp_path: Path) -> None:
     assert [hyp.rate(Source.STT, c) for c in Condition] == [1.0, 1.0, 0.0]
     assert (hyp.layer_gain(normalization), hyp.layer_gain(lexicon)) == (0.0, 1.0)
     assert "+100,0 pts" in paths.summary_md.read_text(encoding="utf-8")
+
+
+def test_lexicon_status_limit_and_report_parameters(tmp_path: Path) -> None:
+    import json
+
+    common = ["--output-dir", str(tmp_path), "--provider", "mock", "--no-cache"]
+    data = ["--sentences", str(SENTENCES_PATH), "--lexicon", str(LEXICON_PATH)]
+
+    # Par défaut : prononciations validées seulement (aucune dans le lexique de test).
+    assert main(["run", *data, *common, "--limit", "2"]) == 0
+    info = json.loads((tmp_path / "run_info.json").read_text(encoding="utf-8"))
+    assert info["phrases"] == 2 and info["langue_nombres"] == "fr"
+    assert info["lexique_statut"] == "valide"
+    assert info["termes_appliques"]["valide"]["occurrences"] == 0
+    assert info["termes_appliques"]["brouillon"]["occurrences"] == 0
+    assert len(_read_csv(OutputPaths(tmp_path).transcriptions_csv)) == 6  # 2 phrases × 3
+
+    assert main(["run", *data, *common, "--lexique-statut", "brouillon", "--overwrite-human"]) == 0
+    info = json.loads((tmp_path / "run_info.json").read_text(encoding="utf-8"))
+    assert info["lexique_statut"] == "brouillon"
+    assert info["termes_appliques"]["brouillon"]["occurrences"] > 0
+    assert "triangle rectangle" in info["termes_appliques"]["brouillon"]["termes"]
+
+    assert main(["report", "--output-dir", str(tmp_path)]) == 0
+    summary = OutputPaths(tmp_path).summary_md.read_text(encoding="utf-8")
+    assert "Langue des nombres : **français** (`--number-language fr`)" in summary
+    assert "prononciations validées et brouillons" in summary
+    assert "prononciation **validée** : 0 occurrence" in summary
+    assert "Des prononciations brouillon ont été appliquées" in summary
+
+
+def test_invalid_limit_fails_cleanly(tmp_path: Path) -> None:
+    args = ["run", "--sentences", str(SENTENCES_PATH), "--lexicon", str(LEXICON_PATH)]
+    assert main([*args, "--output-dir", str(tmp_path), "--provider", "mock", "--limit", "0"]) == 1

@@ -1,46 +1,301 @@
 {
-  "version": "0.0-exemple",
+  "version": "0.1-brouillon",
   "language": "wo",
   "terms": [
     {
       "term": "triangle",
       "pronunciation": "tiriyaangal",
-      "notion": "pythagore",
-      "aliases": ["triangles"],
-      "validated_by": "",
-      "notes": "EXEMPLE non validé : à remplacer par le lexique v0."
+      "statut": "brouillon",
+      "notion": "commun",
+      "aliases": [
+        "triangles"
+      ],
+      "notes": "Proposition brouillon (non validée) : à valider par un locuteur natif."
     },
     {
       "term": "triangle rectangle",
       "pronunciation": "tiriyaangal regtaangal",
+      "statut": "brouillon",
       "notion": "pythagore",
-      "aliases": ["triangles rectangles"],
-      "validated_by": "",
-      "notes": "EXEMPLE non validé. Terme composé : prioritaire sur « triangle »."
+      "aliases": [
+        "triangles rectangles"
+      ],
+      "notes": "Proposition brouillon (non validée) : à valider par un locuteur natif."
     },
     {
       "term": "hypoténuse",
       "pronunciation": "ipoteniws",
+      "statut": "brouillon",
       "notion": "pythagore",
-      "aliases": [],
-      "validated_by": "",
-      "notes": "EXEMPLE non validé."
+      "notes": "Proposition brouillon (non validée) : à valider par un locuteur natif."
+    },
+    {
+      "term": "angle droit",
+      "pronunciation": "aŋgal durwaa",
+      "statut": "brouillon",
+      "notion": "pythagore",
+      "aliases": [
+        "angles droits"
+      ],
+      "notes": "Proposition brouillon (non validée) : à valider par un locuteur natif."
+    },
+    {
+      "term": "côté",
+      "pronunciation": "koote",
+      "statut": "brouillon",
+      "notion": "commun",
+      "aliases": [
+        "côtés"
+      ],
+      "notes": "Proposition brouillon (non validée) : à valider par un locuteur natif."
+    },
+    {
+      "term": "carré",
+      "pronunciation": "kaare",
+      "statut": "brouillon",
+      "notion": "pythagore",
+      "aliases": [
+        "carrés"
+      ],
+      "notes": "Proposition brouillon (non validée) : à valider par un locuteur natif."
+    },
+    {
+      "term": "racine carrée",
+      "pronunciation": "rasin kaare",
+      "statut": "brouillon",
+      "notion": "pythagore",
+      "notes": "Proposition brouillon (non validée) : à valider par un locuteur natif."
+    },
+    {
+      "term": "somme",
+      "pronunciation": "som",
+      "statut": "brouillon",
+      "notion": "pythagore",
+      "notes": "Proposition brouillon (non validée) : à valider par un locuteur natif."
+    },
+    {
+      "term": "égalité",
+      "pronunciation": "egalite",
+      "statut": "brouillon",
+      "notion": "commun",
+      "aliases": [
+        "égalités"
+      ],
+      "notes": "Proposition brouillon (non validée) : à valider par un locuteur natif."
     },
     {
       "term": "théorème de Pythagore",
       "pronunciation": "teyorem bu Pitagor",
+      "statut": "brouillon",
       "notion": "pythagore",
-      "aliases": [],
-      "validated_by": "",
-      "notes": "EXEMPLE non validé."
+      "notes": "Proposition brouillon (non validée) : à valider par un locuteur natif."
+    },
+    {
+      "term": "théorème de Thalès",
+      "pronunciation": "teyorem bu Talees",
+      "statut": "brouillon",
+      "notion": "thales",
+      "notes": "Proposition brouillon (non validée) : à valider par un locuteur natif."
+    },
+    {
+      "term": "réciproque",
+      "pronunciation": "resiporok",
+      "statut": "brouillon",
+      "notion": "commun",
+      "notes": "Proposition brouillon (non validée) : à valider par un locuteur natif."
+    },
+    {
+      "term": "contraposée",
+      "pronunciation": "kontarapose",
+      "statut": "brouillon",
+      "notion": "pythagore",
+      "notes": "Proposition brouillon (non validée) : à valider par un locuteur natif."
+    },
+    {
+      "term": "droites parallèles",
+      "pronunciation": "durwaat paralel",
+      "statut": "brouillon",
+      "notion": "thales",
+      "notes": "Proposition brouillon (non validée) : à valider par un locuteur natif."
     },
     {
       "term": "parallèle",
       "pronunciation": "paralel",
+      "statut": "brouillon",
       "notion": "thales",
-      "aliases": ["parallèles"],
-      "validated_by": "",
-      "notes": "EXEMPLE non validé."
+      "aliases": [
+        "parallèles"
+      ],
+      "notes": "Proposition brouillon (non validée) : à valider par un locuteur natif."
+    },
+    {
+      "term": "perpendiculaire",
+      "pronunciation": "perpandikileer",
+      "statut": "brouillon",
+      "notion": "commun",
+      "aliases": [
+        "perpendiculaires"
+      ],
+      "notes": "Proposition brouillon (non validée) : à valider par un locuteur natif."
+    },
+    {
+      "term": "rapport",
+      "pronunciation": "rappoor",
+      "statut": "brouillon",
+      "notion": "thales",
+      "aliases": [
+        "rapports"
+      ],
+      "notes": "Proposition brouillon (non validée) : à valider par un locuteur natif."
+    },
+    {
+      "term": "proportionnel",
+      "pronunciation": "porporsonel",
+      "statut": "brouillon",
+      "notion": "thales",
+      "aliases": [
+        "proportionnels",
+        "proportionnelles",
+        "proportionnelle"
+      ],
+      "notes": "Proposition brouillon (non validée) : à valider par un locuteur natif."
+    },
+    {
+      "term": "segment",
+      "pronunciation": "segmaa",
+      "statut": "brouillon",
+      "notion": "commun",
+      "aliases": [
+        "segments"
+      ],
+      "notes": "Proposition brouillon (non validée) : à valider par un locuteur natif."
+    },
+    {
+      "term": "longueur",
+      "pronunciation": "loŋgër",
+      "statut": "brouillon",
+      "notion": "commun",
+      "aliases": [
+        "longueurs"
+      ],
+      "notes": "Proposition brouillon (non validée) : à valider par un locuteur natif."
+    },
+    {
+      "term": "sommet",
+      "pronunciation": "some",
+      "statut": "brouillon",
+      "notion": "commun",
+      "aliases": [
+        "sommets"
+      ],
+      "notes": "Proposition brouillon (non validée) : à valider par un locuteur natif."
+    },
+    {
+      "term": "alignés",
+      "pronunciation": "aliñe",
+      "statut": "brouillon",
+      "notion": "thales",
+      "aliases": [
+        "aligné",
+        "alignées",
+        "alignée"
+      ],
+      "notes": "Proposition brouillon (non validée) : à valider par un locuteur natif."
+    },
+    {
+      "term": "diagonale",
+      "pronunciation": "jaagonaal",
+      "statut": "brouillon",
+      "notion": "commun",
+      "aliases": [
+        "diagonales"
+      ],
+      "notes": "Proposition brouillon (non validée) : à valider par un locuteur natif."
+    },
+    {
+      "term": "hauteur",
+      "pronunciation": "otër",
+      "statut": "brouillon",
+      "notion": "commun",
+      "aliases": [
+        "hauteurs"
+      ],
+      "notes": "Proposition brouillon (non validée) : à valider par un locuteur natif."
+    },
+    {
+      "term": "produit en croix",
+      "pronunciation": "porduwi aŋ kurwaa",
+      "statut": "brouillon",
+      "notion": "thales",
+      "aliases": [
+        "produits en croix"
+      ],
+      "notes": "Proposition brouillon (non validée) : à valider par un locuteur natif."
+    },
+    {
+      "term": "centimètres",
+      "pronunciation": "santimet",
+      "statut": "brouillon",
+      "notion": "commun",
+      "aliases": [
+        "centimètre"
+      ],
+      "notes": "Proposition brouillon (non validée) : à valider par un locuteur natif."
+    },
+    {
+      "term": "mètres",
+      "pronunciation": "met",
+      "statut": "brouillon",
+      "notion": "commun",
+      "aliases": [
+        "mètre"
+      ],
+      "notes": "Proposition brouillon (non validée) : à valider par un locuteur natif."
+    },
+    {
+      "term": "distance",
+      "pronunciation": "distaans",
+      "statut": "brouillon",
+      "notion": "commun",
+      "aliases": [
+        "distances"
+      ],
+      "notes": "Proposition brouillon (non validée) : à valider par un locuteur natif."
+    },
+    {
+      "term": "arrondi",
+      "pronunciation": "aroŋdi",
+      "statut": "brouillon",
+      "notion": "commun",
+      "aliases": [
+        "arrondie",
+        "arrondir"
+      ],
+      "notes": "Proposition brouillon (non validée) : à valider par un locuteur natif."
+    },
+    {
+      "term": "dixième",
+      "pronunciation": "disiyeem",
+      "statut": "brouillon",
+      "notion": "commun",
+      "aliases": [
+        "dixièmes"
+      ],
+      "notes": "Proposition brouillon (non validée) : à valider par un locuteur natif."
+    },
+    {
+      "term": "milieu",
+      "pronunciation": "miliyë",
+      "statut": "brouillon",
+      "notion": "commun",
+      "notes": "Proposition brouillon (non validée) : à valider par un locuteur natif."
+    },
+    {
+      "term": "réduction",
+      "pronunciation": "redigsoŋ",
+      "statut": "brouillon",
+      "notion": "thales",
+      "notes": "Proposition brouillon (non validée) : à valider par un locuteur natif."
     }
   ]
 }

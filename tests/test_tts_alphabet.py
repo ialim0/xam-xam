@@ -20,9 +20,11 @@ def test_unknown_alphabet() -> None:
         unsupported_characters("texte", "srr")
 
 
-def test_lexicon_only_uses_tts_alphabet(lexicon: Lexicon) -> None:
+@pytest.mark.parametrize("fixture", ["repo_lexicon", "lexicon"])
+def test_lexicon_only_uses_tts_alphabet(fixture: str, request: pytest.FixtureRequest) -> None:
     """Signale tout terme dont une graphie ou la prononciation contient un caractère
-    que le TTS ignorerait silencieusement."""
+    que le TTS ignorerait silencieusement (lexique du dépôt et lexique de test)."""
+    lexicon: Lexicon = request.getfixturevalue(fixture)
     issues = find_alphabet_issues(lexicon)
     assert not issues, format_issues(issues)
 

@@ -38,11 +38,15 @@ pip install -e ".[dev]"
 
 pytest                          # tous les tests passent sans aucune clé (provider mock)
 python -m xamxam.lexicon        # valide le lexique et signale les caractères ignorés par le TTS
+python -m xamxam.eval check     # contrôle le jeu de 100 phrases du benchmark
 python -m xamxam.eval run       # audios des 3 conditions, aller-retour STT, fiche d'évaluation humaine
 python -m xamxam.eval report    # classement des termes et résumé Markdown
 ```
 
 ### Évaluation en trois conditions
+
+Procédure complète du benchmark de 100 phrases (validation des termes, durées, nombre de
+requêtes) : [docs/benchmark.md](docs/benchmark.md).
 
 Chaque phrase est synthétisée trois fois, chaque condition ajoutant une couche à la précédente :
 

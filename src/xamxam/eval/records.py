@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import json
 from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import StrEnum
@@ -58,6 +59,10 @@ class OutputPaths:
     @property
     def human_csv(self) -> Path:
         return self.root / "humain" / "evaluation_humaine.csv"
+
+    @property
+    def run_info_json(self) -> Path:
+        return self.root / "run_info.json"
 
     @property
     def ranking_csv(self) -> Path:
@@ -167,3 +172,52 @@ def read_terms(path: Path) -> list[TermRecord]:
         ]
     except ValueError as exc:
         raise RecordsError(f"{path} : valeur invalide ({exc})") from exc
+
+
+@dataclass(frozen=True)
+class AppliedTerms:
+    """Termes réécrits par le lexique dans la condition « lexique »."""
+
+    occurrences: int = 0
+    terms: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class RunInfo:
+    """Paramètres d'un run, relus par le rapport."""
+
+    sentences: int
+    number_language: str
+    lexicon_status: str  # « valide » (validées seulement) ou « brouillon » (validées + brouillons)
+    applied: dict[str, AppliedTerms]  # statut de prononciation → termes appliqués
+
+    def write(self, path: Path) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        data = {
+            "phrases": self.sentences,
+            "langue_nombres": self.number_language,
+            "lexique_statut": self.lexicon_status,
+            "termes_appliques": {
+                status: {"occurrences": a.occurrences, "termes": list(a.terms)}
+                for status, a in self.applied.items()
+            },
+        }
+        path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+    @classmethod
+    def read(cls, path: Path) -> RunInfo | None:
+        if not path.exists():
+            return None
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            return cls(
+                sentences=int(data["phrases"]),
+                number_language=data["langue_nombres"],
+                lexicon_status=data["lexique_statut"],
+                applied={
+                    status: AppliedTerms(int(v["occurrences"]), tuple(v["termes"]))
+                    for status, v in data["termes_appliques"].items()
+                },
+            )
+        except (ValueError, KeyError, TypeError) as exc:
+            raise RecordsError(f"{path} : contenu invalide ({exc})") from exc

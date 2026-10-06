@@ -15,11 +15,12 @@ from xamxam.config import (
     Settings,
 )
 from xamxam.errors import XamXamError
-from xamxam.eval.dataset import load_sentences
+from xamxam.eval.dataset import DatasetError, load_sentences
 from xamxam.eval.human import write_human_template
-from xamxam.eval.records import OutputPaths
+from xamxam.eval.records import OutputPaths, RunInfo
 from xamxam.eval.report import build_report
 from xamxam.eval.run import run_evaluation
+from xamxam.lexicon import VALIDATED_AND_DRAFT, VALIDATED_ONLY
 from xamxam.normalize import NumberLanguage
 from xamxam.pipeline import XamXamPipeline
 from xamxam.providers import (
@@ -72,10 +73,24 @@ def build_parser() -> argparse.ArgumentParser:
     )
     run.add_argument("--no-cache", action="store_true", help="Désactive les caches TTS et STT.")
     run.add_argument(
+        "--lexique-statut",
+        choices=("valide", "brouillon"),
+        default="valide",
+        help="valide : seules les prononciations validées sont appliquées ; "
+        "brouillon : les brouillons le sont aussi.",
+    )
+    run.add_argument(
+        "--limit", type=int, default=None, help="Ne traite que les N premières phrases."
+    )
+    run.add_argument(
         "--overwrite-human",
         action="store_true",
         help="Recrée la fiche d'évaluation humaine même si elle existe (annotations perdues).",
     )
+
+    check = commands.add_parser("check", help="Contrôle le jeu de phrases du benchmark.")
+    check.add_argument("--sentences", type=Path, default=DEFAULT_SENTENCES_PATH)
+    check.add_argument("--lexicon", type=Path, default=DEFAULT_LEXICON_PATH)
 
     report = commands.add_parser("report", help="Calcule les métriques et écrit le rapport.")
     report.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
@@ -107,18 +122,31 @@ def _run(args: argparse.Namespace) -> None:
         tts = cache = CachedTTSProvider(tts, args.cache_dir)
         # Évaluation uniquement : les transcriptions des phrases de test sont mises en cache.
         stt = CachedSTTProvider(stt, args.cache_dir.parent / "stt")
+    sentences = load_sentences(args.sentences)
+    if args.limit is not None:
+        if args.limit < 1:
+            raise DatasetError("--limit doit valoir au moins 1.")
+        sentences = sentences[: args.limit]
+    statuses = VALIDATED_AND_DRAFT if args.lexique_statut == "brouillon" else VALIDATED_ONLY
     result = run_evaluation(
-        load_sentences(args.sentences),
+        sentences,
         pipeline=XamXamPipeline.from_lexicon_file(
             args.lexicon,
             reading_language=args.reading_language,
             number_language=args.number_language,
+            applied_statuses=statuses,
         ),
         tts=tts,
         stt=stt,
         paths=paths,
         text_column=args.text_column,
     )
+    RunInfo(
+        sentences=len(sentences),
+        number_language=str(args.number_language),
+        lexicon_status=args.lexique_statut,
+        applied=result.applied,
+    ).write(paths.run_info_json)
     write_human_template(result.transcriptions, paths.human_csv, overwrite=args.overwrite_human)
     if cache is not None:
         logger.info(
@@ -139,6 +167,16 @@ def _report(args: argparse.Namespace) -> None:
     paths = OutputPaths(args.output_dir)
     build_report(paths)
     logger.info("Rapport écrit : %s et %s", paths.ranking_csv, paths.summary_md)
+
+
+def _check(args: argparse.Namespace) -> bool:
+    from xamxam.eval.check import check_sentences, format_report
+
+    # Pire cas pour la longueur : toutes les prononciations, même brouillon, appliquées.
+    pipeline = XamXamPipeline.from_lexicon_file(args.lexicon, applied_statuses=VALIDATED_AND_DRAFT)
+    report = check_sentences(load_sentences(args.sentences), pipeline)
+    print(format_report(report))
+    return report.ok
 
 
 def _llm(args: argparse.Namespace) -> None:
@@ -188,6 +226,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             _run(args)
         elif args.command == "llm":
             _llm(args)
+        elif args.command == "check":
+            return 0 if _check(args) else 1
         else:
             _report(args)
     except XamXamError as exc:

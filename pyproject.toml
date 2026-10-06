@@ -48,6 +48,10 @@ select = ["E", "W", "F", "I", "N", "UP", "B", "SIM", "PTH", "RUF"]
 # Le français utilise légitimement des caractères Unicode « ambigus » (’, ×, −…).
 ignore = ["RUF001", "RUF002", "RUF003"]
 
+[tool.ruff.lint.per-file-ignores]
+# Fichier de données : une phrase par ligne, les couper nuirait à la relecture.
+"tools/phrases_benchmark_100.py" = ["E501"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"

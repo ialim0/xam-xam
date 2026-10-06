@@ -2,12 +2,17 @@ from pathlib import Path
 
 import pytest
 
-from xamxam.lexicon import Lexicon, LexiconIndex, load_lexicon
+from xamxam.lexicon import VALIDATED_AND_DRAFT, Lexicon, LexiconIndex, load_lexicon
 from xamxam.pipeline import XamXamPipeline
 
 ROOT = Path(__file__).resolve().parents[1]
-LEXICON_PATH = ROOT / "data" / "lexicon" / "xam_xam_lexique_v0.json"
-SENTENCES_PATH = ROOT / "data" / "eval" / "phrases_pythagore_thales.csv"
+# Données réelles du dépôt (vérifiées par des tests dédiés : schéma, alphabet, check).
+REPO_LEXICON_PATH = ROOT / "data" / "lexicon" / "xam_xam_lexique_v0.json"
+REPO_SENTENCES_PATH = ROOT / "data" / "eval" / "phrases_pythagore_thales.csv"
+# Données de test, petites et stables : les tests de comportement ne dépendent pas du
+# contenu du lexique et du jeu de phrases réels, appelés à évoluer.
+LEXICON_PATH = ROOT / "tests" / "data" / "lexique_test.json"
+SENTENCES_PATH = ROOT / "tests" / "data" / "phrases_test.csv"
 
 # Toutes les variables lues par Xam-Xam : les tests doivent passer sans aucune clé, même si
 # le poste du développeur en définit.
@@ -51,13 +56,20 @@ def lexicon() -> Lexicon:
 
 
 @pytest.fixture
+def repo_lexicon() -> Lexicon:
+    return load_lexicon(REPO_LEXICON_PATH)
+
+
+@pytest.fixture
 def index(lexicon: Lexicon) -> LexiconIndex:
     return LexiconIndex(lexicon)
 
 
 @pytest.fixture
 def pipeline(lexicon: Lexicon) -> XamXamPipeline:
-    return XamXamPipeline(lexicon)
+    # Le lexique du dépôt ne contient que des brouillons : les tests les appliquent
+    # explicitement (en production, seules les prononciations validées le sont).
+    return XamXamPipeline(lexicon, applied_statuses=VALIDATED_AND_DRAFT)
 
 
 @pytest.fixture

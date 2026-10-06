@@ -22,7 +22,7 @@ def find_alphabet_issues(lexicon: Lexicon, language: str | None = None) -> list[
     issues = []
     for term in lexicon.terms:
         candidates = [
-            ("pronunciation", term.pronunciation),
+            *([("pronunciation", term.pronunciation)] if term.pronunciation else []),
             ("term", term.term),
             *(("alias", alias) for alias in term.aliases),
         ]
