@@ -50,6 +50,10 @@ class MockTTSProvider(TTSProvider):
         self._sample_rate = sample_rate
         self._seconds_per_char = seconds_per_char
 
+    @property
+    def cache_identity(self) -> str:
+        return f"mock:{self._sample_rate}:{self._seconds_per_char}"
+
     def synthesize(self, text: str, *, language: str = "wo") -> bytes:
         frames = max(1, int(len(text) * self._seconds_per_char * self._sample_rate))
         buffer = io.BytesIO()

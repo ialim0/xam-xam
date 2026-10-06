@@ -6,6 +6,7 @@ from xamxam.providers.base import (
     STTProvider,
     TTSProvider,
 )
+from xamxam.providers.cache import CachedTTSProvider
 from xamxam.providers.factory import (
     ProviderName,
     create_providers,
@@ -15,6 +16,7 @@ from xamxam.providers.factory import (
 from xamxam.providers.mock import MockSTTProvider, MockTTSProvider
 
 __all__ = [
+    "CachedTTSProvider",
     "MockSTTProvider",
     "MockTTSProvider",
     "ProviderError",

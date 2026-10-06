@@ -15,6 +15,8 @@ from pathlib import Path
 DEFAULT_LEXICON_PATH = Path("data/lexicon/xam_xam_lexique_v0.json")
 DEFAULT_SENTENCES_PATH = Path("data/eval/phrases_pythagore_thales.csv")
 DEFAULT_OUTPUT_DIR = Path("outputs")
+# Hors de outputs/ pour survivre au nettoyage des résultats d'évaluation.
+DEFAULT_TTS_CACHE_DIR = Path(".cache/tts")
 
 
 def _read(env: Mapping[str, str], name: str) -> str | None:

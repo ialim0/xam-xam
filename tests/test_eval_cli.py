@@ -7,8 +7,8 @@ import pytest
 from conftest import LEXICON_PATH, SENTENCES_PATH
 from xamxam.eval.cli import main
 from xamxam.eval.dataset import DatasetError, load_sentences
-from xamxam.eval.metrics import Source
-from xamxam.eval.records import OutputPaths, Version
+from xamxam.eval.metrics import LAYERS, Source
+from xamxam.eval.records import Condition, OutputPaths
 from xamxam.eval.report import build_report
 from xamxam.eval.run import run_evaluation
 from xamxam.pipeline import XamXamPipeline
@@ -50,25 +50,44 @@ def test_duplicate_ids_are_rejected(tmp_path: Path) -> None:
         load_sentences(path)
 
 
-def test_run_and_report_end_to_end(tmp_path: Path) -> None:
+def test_run_and_report_end_to_end(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
     out = tmp_path / "outputs"
     common = ["--output-dir", str(out)]
-    run_args = ["run", "--sentences", str(SENTENCES_PATH), "--lexicon", str(LEXICON_PATH), *common]
+    run_args = [
+        "run",
+        "--sentences",
+        str(SENTENCES_PATH),
+        "--lexicon",
+        str(LEXICON_PATH),
+        "--cache-dir",
+        str(tmp_path / "cache"),
+        "--provider",
+        "mock",
+        *common,
+    ]
 
-    assert main([*run_args, "--provider", "mock"]) == 0
+    with caplog.at_level("INFO"):
+        assert main(run_args) == 0
+    # 15 audios demandés, mais une phrase sans maths donne le même texte brut et normalisé.
+    assert "Cache audio" in caplog.text
     paths = OutputPaths(out)
     for sentence_id in ("P001", "P002", "P003", "T001", "C001"):
-        for version in Version:
-            with wave.open(str(paths.audio_file(sentence_id, version)), "rb") as wav:
+        for condition in Condition:
+            with wave.open(str(paths.audio_file(sentence_id, condition)), "rb") as wav:
                 assert wav.getnframes() > 0
 
     human_rows = _read_csv(paths.human_csv)
-    assert len(human_rows) == 10
+    assert len(human_rows) == 15
+    assert {row["condition"] for row in human_rows} == {"brut", "normalise", "lexique"}
     assert all(row["note_correction_wolof"] == "" for row in human_rows)
 
     # Une fiche déjà remplie n'est jamais écrasée par un nouveau `run`.
     paths.human_csv.write_text(paths.human_csv.read_text(encoding="utf-8") + "# annoté\n")
-    assert main([*run_args, "--provider", "mock"]) == 0
+    caplog.clear()
+    with caplog.at_level("INFO"):
+        assert main(run_args) == 0
+    # Deuxième passage : tous les audios viennent du cache.
+    assert "0 généré(s)" in caplog.text
     assert paths.human_csv.read_text(encoding="utf-8").endswith("# annoté\n")
 
     assert main(["report", *common]) == 0
@@ -79,7 +98,10 @@ def test_run_and_report_end_to_end(tmp_path: Path) -> None:
         "parallèle",
         "théorème de Pythagore",
     }
-    assert "Taux d'erreur global" in paths.summary_md.read_text(encoding="utf-8")
+    assert "taux_normalise_combine" in ranking[0]
+    summary = paths.summary_md.read_text(encoding="utf-8")
+    assert "Apport de chaque couche" in summary
+    assert "Normalisé + lexique" in summary
 
 
 def test_report_without_run_fails_cleanly(tmp_path: Path) -> None:
@@ -91,8 +113,8 @@ def test_kvicc_provider_without_keys_fails_cleanly(tmp_path: Path) -> None:
     assert main([*args, "--output-dir", str(tmp_path), "--provider", "kvicc"]) == 1
 
 
-def test_improvement_is_measured(tmp_path: Path) -> None:
-    # STT simulé qui déforme « hypoténuse » prononcé à l'anglaise mais comprend la réécriture.
+def test_each_layer_contribution_is_measured(tmp_path: Path) -> None:
+    # STT simulé : « hypoténuse » non réécrit est déformé, seul le lexique corrige.
     def stt_transform(text: str) -> str:
         return text.replace("Hypoténuse", "haïpoteniouz")
 
@@ -105,7 +127,8 @@ def test_improvement_is_measured(tmp_path: Path) -> None:
         paths=paths,
     )
     report = build_report(paths)
+    normalization, lexicon = LAYERS
     [hyp] = [s for s in report.ranking if s.term == "hypoténuse"]
-    assert hyp.rate(Source.STT, Version.BEFORE) == 1.0
-    assert hyp.rate(Source.STT, Version.AFTER) == 0.0
-    assert "100,0 %" in paths.summary_md.read_text(encoding="utf-8")
+    assert [hyp.rate(Source.STT, c) for c in Condition] == [1.0, 1.0, 0.0]
+    assert (hyp.layer_gain(normalization), hyp.layer_gain(lexicon)) == (0.0, 1.0)
+    assert "+100,0 pts" in paths.summary_md.read_text(encoding="utf-8")

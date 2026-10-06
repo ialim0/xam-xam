@@ -37,22 +37,45 @@ python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
 pytest                          # tous les tests passent sans aucune clé (provider mock)
-python -m xamxam.eval run       # audios avant/après, aller-retour STT, fiche d'évaluation humaine
+python -m xamxam.lexicon        # valide le lexique et signale les caractères ignorés par le TTS
+python -m xamxam.eval run       # audios des 3 conditions, aller-retour STT, fiche d'évaluation humaine
 python -m xamxam.eval report    # classement des termes et résumé Markdown
 ```
 
-Les résultats sont écrits dans `outputs/` (ignoré par Git) :
+### Évaluation en trois conditions
+
+Chaque phrase est synthétisée trois fois, chaque condition ajoutant une couche à la précédente :
+
+| Condition | Texte envoyé au TTS |
+| --- | --- |
+| `brut` | phrase d'origine, symboles compris (`AB² = 25 cm`) |
+| `normalise` | normalisation mathématique seule (« A B au carré égale vingt-cinq centimètres ») |
+| `lexique` | normalisation puis réécriture des termes par le lexique |
+
+Le rapport sépare ainsi l'**apport de la normalisation** (`brut` → `normalise`) de l'**apport du
+lexique** (`normalise` → `lexique`), globalement et pour chaque terme. Les résultats sont écrits
+dans `outputs/` (ignoré par Git) :
 
 | Fichier | Contenu |
 | --- | --- |
-| `outputs/audio/{id}_avant.wav`, `{id}_apres.wav` | audio du texte brut et du texte passé par Xam-Xam |
+| `outputs/audio/{id}_{condition}.wav` | audio de chaque condition |
 | `outputs/stt/transcriptions.csv` | transcription STT et WER de chaque audio |
 | `outputs/stt/termes.csv` | apparitions et erreurs de chaque terme cible |
 | `outputs/humain/evaluation_humaine.csv` | fiche à remplir (notes 1 à 5, mots mal prononcés) |
-| `outputs/rapport/classement_termes.csv` | taux d'erreur par terme, avant et après |
-| `outputs/rapport/resume.md` | taux global d'amélioration, notes moyennes, termes prioritaires |
+| `outputs/rapport/classement_termes.csv` | taux d'erreur par terme et par condition, apport de chaque couche |
+| `outputs/rapport/resume.md` | taux par condition, apport des couches, notes moyennes, termes prioritaires |
 
 `run` n'écrase jamais une fiche humaine déjà remplie (option `--overwrite-human` pour forcer).
+
+Options utiles de `run` :
+
+- `--number-language fr|wo` : nombres écrits en lettres françaises (« vingt-cinq ») ou wolof
+  (« ñaar fukk ak juróom »). Le TTS ne lit lui-même que 0 à 10 : sans cette étape, les autres
+  nombres sont perdus. La numération wolof suit l'orthographe officielle et reste **à faire
+  valider** par des locuteurs natifs (variantes comme « fanweer » pour 30).
+- `--cache-dir` (défaut `.cache/tts/`) et `--no-cache` : chaque audio est mis en cache sous
+  l'empreinte SHA-256 de (fournisseur et réglages, langue, texte exact). Un audio déjà produit
+  n'est jamais régénéré, ce qui ménage le quota de l'API.
 
 ### Configuration
 
@@ -89,20 +112,22 @@ src/xamxam/
 ├── normalize/   expressions mathématiques → mots, tables de lecture par langue
 ├── pronounce/   substitution des termes par leur prononciation validée
 ├── pipeline.py  normalisation puis réécriture : le texte prêt pour le TTS
-├── providers/   interfaces TTSProvider / STTProvider, mock, API Kiriku du KVICC
+├── providers/   interfaces TTSProvider / STTProvider, mock, API Kiriku du KVICC, cache audio
+├── tts_alphabet.py  caractères acceptés par les voix TTS (wolof, pulaar)
 ├── timalens/    client vidéo optionnel (désactivé sans clé)
 ├── whatsapp/    webhook FastAPI (squelette)
 └── eval/        évaluation avant/après : run, alignement, fiche humaine, métriques, rapport
 ```
 
 ```
-texte ──► normalize ──► pronounce (lexique) ──► TTS ──► audio
+texte ──► normalize ──► pronounce (lexique) ──► TTS (cache) ──► audio
                                                  │
                          eval : STT ◄────────────┘ ──► alignement ──► métriques ──► rapport
 ```
 
-Les tables de lecture des expressions mathématiques existent pour l'instant **en français**
-seulement. Les lectures en wolof, pulaar et sérère seront ajoutées avec des locuteurs natifs.
+Les tables de lecture des expressions mathématiques (« au carré », « racine carrée de »…) existent
+pour l'instant **en français** seulement ; les nombres peuvent être lus en français ou en wolof.
+Les lectures en wolof, pulaar et sérère seront complétées avec des locuteurs natifs.
 
 ## Contribuer au lexique
 
@@ -138,6 +163,9 @@ pip install -e ".[dev]"
 pytest
 python -m xamxam.eval run && python -m xamxam.eval report
 ```
+
+The evaluation compares three conditions (raw text, math normalization only, normalization +
+lexicon) so the report isolates the contribution of each layer. TTS audio is cached by text hash.
 
 Every key is optional: without them, mock providers are used and video is disabled. Code is MIT;
 lexicon and datasets are CC BY-SA 4.0. Contributions to the lexicon are welcome, see

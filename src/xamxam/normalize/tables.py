@@ -8,10 +8,11 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from enum import StrEnum
 from types import MappingProxyType
 
 from xamxam.errors import XamXamError
-from xamxam.normalize.numbers import spell_french_number
+from xamxam.normalize.numbers import spell_french_number, spell_wolof_number
 
 
 class UnknownLanguageError(XamXamError, ValueError):
@@ -100,6 +101,23 @@ FRENCH = ReadingTable(
 )
 
 _TABLES: dict[str, ReadingTable] = {FRENCH.language: FRENCH}
+
+
+class NumberLanguage(StrEnum):
+    """Langue dans laquelle les nombres sont écrits en lettres avant le TTS.
+
+    Le TTS Kiriku ne lit lui-même que 0 à 10 (en français) : tout nombre plus grand
+    doit être écrit en lettres, sinon il est perdu. Le mode choisi s'applique à tous
+    les nombres pour que la lecture reste homogène dans une phrase.
+    """
+
+    FRENCH = "fr"
+    WOLOF = "wo"
+
+
+NUMBER_SPELLERS: Mapping[NumberLanguage, Callable[[int], str]] = MappingProxyType(
+    {NumberLanguage.FRENCH: spell_french_number, NumberLanguage.WOLOF: spell_wolof_number}
+)
 
 
 def get_table(language: str) -> ReadingTable:

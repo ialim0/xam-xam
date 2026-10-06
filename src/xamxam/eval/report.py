@@ -9,29 +9,33 @@ from statistics import mean
 
 from xamxam.eval.human import HumanRating, load_human_ratings
 from xamxam.eval.metrics import (
+    LAYERS,
+    TOTAL,
     Source,
     TermStats,
     compute_term_stats,
+    gain,
     global_rate,
     mean_scores,
     rank_terms,
     relative_improvement,
 )
 from xamxam.eval.records import (
+    Condition,
     OutputPaths,
     TranscriptionRecord,
-    Version,
     read_terms,
     read_transcriptions,
 )
 
 TOP_TERMS_IN_SUMMARY = 10
+_SOURCE_LABELS = {Source.STT: "STT", Source.HUMAN: "Humain", Source.COMBINED: "Combiné"}
 _RANKING_COLUMNS = (
     "rang",
     "terme",
     "apparitions",
-    *(f"taux_{v}_{s}" for s in Source for v in Version),
-    "amelioration_combine",
+    *(f"taux_{c}_{s}" for s in Source for c in Condition),
+    *(f"apport_{layer.name}_combine" for layer in (*LAYERS, TOTAL)),
 )
 
 
@@ -69,83 +73,133 @@ def write_ranking(path: Path, ranking: list[TermStats]) -> None:
                     position,
                     stats.term,
                     stats.appearances,
-                    *(_csv_number(stats.rate(s, v)) for s in Source for v in Version),
-                    _csv_number(stats.improvement()),
+                    *(_csv_number(stats.rate(s, c)) for s in Source for c in Condition),
+                    *(_csv_number(stats.layer_gain(layer)) for layer in (*LAYERS, TOTAL)),
                 )
             )
 
 
+def _french_decimal(value: float, digits: int) -> str:
+    return f"{value:.{digits}f}".replace(".", ",")
+
+
 def _percent(value: float | None) -> str:
-    return "n/d" if value is None else f"{value * 100:.1f} %".replace(".", ",")
+    return "n/d" if value is None else f"{_french_decimal(value * 100, 1)} %"
+
+
+def _points(value: float | None) -> str:
+    return "n/d" if value is None else f"{value * 100:+.1f} pts".replace(".", ",")
 
 
 def _score(value: float | None) -> str:
-    return "n/d" if value is None else f"{value:.2f}".replace(".", ",")
+    return "n/d" if value is None else _french_decimal(value, 2)
+
+
+def _row(*cells: object) -> str:
+    return "| " + " | ".join(str(cell) for cell in cells) + " |"
+
+
+def _table(header: list[str]) -> list[str]:
+    return [_row(*header), _row(*(["---"] * len(header)))]
 
 
 def render_summary(report: Report) -> str:
     sentence_count = len({t.sentence_id for t in report.transcriptions})
+    conditions = list(Condition)
     lines = [
         "# Rapport d'évaluation Xam-Xam",
         "",
         f"- Phrases évaluées : {sentence_count}",
         f"- Lignes annotées par des évaluateurs humains : {len(report.ratings)}",
+        "- Conditions : "
+        + ", ".join(f"**{c.label}** (`{c}`)" for c in conditions)
+        + ". Chacune ajoute une couche à la précédente.",
         "",
-        "## Taux d'erreur global sur les termes cibles",
+        "## Taux d'erreur sur les termes cibles",
         "",
-        "| Source | Avant | Après | Amélioration relative |",
-        "| --- | --- | --- | --- |",
+        *_table(["Source", *(c.label for c in conditions)]),
     ]
-    labels = {Source.STT: "STT", Source.HUMAN: "Humain", Source.COMBINED: "Combiné"}
     for source in Source:
-        before = global_rate(report.ranking, source, Version.BEFORE).rate
-        after = global_rate(report.ranking, source, Version.AFTER).rate
         lines.append(
-            f"| {labels[source]} | {_percent(before)} | {_percent(after)} "
-            f"| {_percent(relative_improvement(before, after))} |"
+            _row(
+                _SOURCE_LABELS[source],
+                *(_percent(global_rate(report.ranking, source, c).rate) for c in conditions),
+            )
         )
 
     lines += [
         "",
         "La source « Combiné » compte une erreur dès que le STT ou un évaluateur la signale.",
         "",
+        "## Apport de chaque couche (source combinée)",
+        "",
+        *_table(["Couche", "Taux avant", "Taux après", "Gain", "Erreurs supprimées"]),
+    ]
+    for layer in (*LAYERS, TOTAL):
+        before = global_rate(report.ranking, Source.COMBINED, layer.start).rate
+        after = global_rate(report.ranking, Source.COMBINED, layer.end).rate
+        lines.append(
+            _row(
+                f"{layer.label} ({layer.start.label} → {layer.end.label})",
+                _percent(before),
+                _percent(after),
+                _points(gain(before, after)),
+                _percent(relative_improvement(before, after)),
+            )
+        )
+
+    lines += [
+        "",
         "## WER moyen de l'aller-retour TTS → STT",
         "",
-        "| Avant | Après |",
-        "| --- | --- |",
-        "| {} | {} |".format(
+        *_table([c.label for c in conditions]),
+        _row(
             *(
                 _percent(mean(wers) if wers else None)
                 for wers in (
-                    [t.wer for t in report.transcriptions if t.version is v] for v in Version
+                    [t.wer for t in report.transcriptions if t.condition is c] for c in conditions
                 )
             )
         ),
         "",
         "## Notes humaines moyennes (1 à 5)",
         "",
-        "| Version | Lignes | Correction du wolof | Prononciation des termes |",
-        "| --- | --- | --- | --- |",
+        *_table(["Condition", "Lignes", "Correction du wolof", "Prononciation des termes"]),
     ]
-    for version in Version:
-        scores = mean_scores(report.ratings, version)
+    for condition in conditions:
+        scores = mean_scores(report.ratings, condition)
         lines.append(
-            f"| {version} | {scores.count} | {_score(scores.wolof)} "
-            f"| {_score(scores.pronunciation)} |"
+            _row(
+                condition.label,
+                scores.count,
+                _score(scores.wolof),
+                _score(scores.pronunciation),
+            )
         )
 
     lines += [
         "",
         f"## Termes à améliorer en priorité (top {TOP_TERMS_IN_SUMMARY})",
         "",
-        "| Rang | Terme | Apparitions | Taux avant | Taux après |",
-        "| --- | --- | --- | --- | --- |",
+        *_table(
+            [
+                "Rang",
+                "Terme",
+                "Apparitions",
+                *(c.label for c in conditions),
+                *(f"Apport {layer.name}" for layer in LAYERS),
+            ]
+        ),
     ]
     for position, stats in enumerate(report.ranking[:TOP_TERMS_IN_SUMMARY], start=1):
         lines.append(
-            f"| {position} | {stats.term} | {stats.appearances} "
-            f"| {_percent(stats.rate(Source.COMBINED, Version.BEFORE))} "
-            f"| {_percent(stats.rate(Source.COMBINED, Version.AFTER))} |"
+            _row(
+                position,
+                stats.term,
+                stats.appearances,
+                *(_percent(stats.rate(Source.COMBINED, c)) for c in conditions),
+                *(_points(stats.layer_gain(layer)) for layer in LAYERS),
+            )
         )
     lines += ["", "Classement complet : `rapport/classement_termes.csv`.", ""]
     return "\n".join(lines)

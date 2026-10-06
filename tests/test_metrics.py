@@ -4,27 +4,32 @@ import pytest
 
 from xamxam.eval.human import HumanEvalError, HumanRating, load_human_ratings
 from xamxam.eval.metrics import (
+    LAYERS,
+    TOTAL,
     ErrorRate,
     Source,
     compute_term_stats,
+    gain,
     global_rate,
     mean_scores,
     rank_terms,
     relative_improvement,
 )
-from xamxam.eval.records import TermRecord, Version
+from xamxam.eval.records import Condition, TermRecord
 
-BEFORE, AFTER = Version.BEFORE, Version.AFTER
+RAW, NORMALIZED, FULL = Condition.RAW, Condition.NORMALIZED, Condition.FULL
+NORMALIZATION, LEXICON = LAYERS
 
 
 def _records() -> list[TermRecord]:
+    # « hypoténuse » : seule la couche lexique corrige. « carré » : la normalisation suffit.
     return [
-        TermRecord("P1", BEFORE, "hypoténuse", 2, 2),
-        TermRecord("P1", AFTER, "hypoténuse", 2, 0),
-        TermRecord("P2", BEFORE, "hypoténuse", 1, 1),
-        TermRecord("P2", AFTER, "hypoténuse", 1, 0),
-        TermRecord("P2", BEFORE, "triangle", 1, 0),
-        TermRecord("P2", AFTER, "triangle", 1, 0),
+        TermRecord("P1", RAW, "hypoténuse", 2, 2),
+        TermRecord("P1", NORMALIZED, "hypoténuse", 2, 2),
+        TermRecord("P1", FULL, "hypoténuse", 2, 0),
+        TermRecord("P2", RAW, "carré", 2, 2),
+        TermRecord("P2", NORMALIZED, "carré", 2, 0),
+        TermRecord("P2", FULL, "carré", 2, 0),
     ]
 
 
@@ -34,56 +39,54 @@ def test_error_rate() -> None:
     assert ErrorRate(1, 2) + ErrorRate(0, 2) == ErrorRate(1, 4)
 
 
-def test_stt_only_rates() -> None:
+def test_layer_gains_are_separated_per_term() -> None:
     stats = compute_term_stats(_records(), [])
-    hyp = stats["hypoténuse"]
-    assert hyp.rate(Source.STT, BEFORE) == 1.0
-    assert hyp.rate(Source.STT, AFTER) == 0.0
-    assert hyp.improvement(Source.STT) == 1.0
-    assert hyp.appearances == 3
+    hyp, square = stats["hypoténuse"], stats["carré"]
+    assert (hyp.layer_gain(NORMALIZATION), hyp.layer_gain(LEXICON)) == (0.0, 1.0)
+    assert (square.layer_gain(NORMALIZATION), square.layer_gain(LEXICON)) == (1.0, 0.0)
+    assert hyp.layer_gain(TOTAL) == square.layer_gain(TOTAL) == 1.0
     # Sans annotation, la source humaine n'a aucune donnée.
-    assert hyp.rate(Source.HUMAN, AFTER) is None
-    assert hyp.rate(Source.COMBINED, AFTER) == 0.0
+    assert hyp.rate(Source.HUMAN, FULL) is None
+
+
+def test_global_rates_per_condition() -> None:
+    stats = compute_term_stats(_records(), []).values()
+    rates = [global_rate(stats, Source.STT, c) for c in Condition]
+    assert rates == [ErrorRate(4, 4), ErrorRate(2, 4), ErrorRate(0, 4)]
+    assert gain(rates[0].rate, rates[1].rate) == 0.5
+    assert relative_improvement(rates[1].rate, rates[2].rate) == 1.0
+    assert relative_improvement(0.0, 0.0) is None
+    assert gain(None, 0.5) is None
 
 
 def test_human_and_combined_rates() -> None:
     ratings = [
         # L'évaluateur entend une erreur que le STT n'a pas vue.
-        HumanRating("P2", AFTER, 4, 3, ("Hypoténuse", "bi")),
-        HumanRating("P2", BEFORE, 2, 1, ()),
+        HumanRating("P1", FULL, 4, 3, ("Hypoténuse", "bi")),
+        HumanRating("P2", RAW, 2, 1, ()),
     ]
     stats = compute_term_stats(_records(), ratings)
     hyp = stats["hypoténuse"]
-    assert hyp.get(Source.HUMAN, AFTER) == ErrorRate(1, 1)
-    assert hyp.get(Source.HUMAN, BEFORE) == ErrorRate(0, 1)
+    assert hyp.get(Source.HUMAN, FULL) == ErrorRate(1, 2)
+    assert hyp.get(Source.HUMAN, RAW) == ErrorRate()
     # Combiné : erreur dès qu'une des deux sources la signale.
-    assert hyp.get(Source.COMBINED, AFTER) == ErrorRate(1, 3)
-    assert hyp.get(Source.COMBINED, BEFORE) == ErrorRate(3, 3)
+    assert hyp.get(Source.COMBINED, FULL) == ErrorRate(1, 2)
+    assert stats["carré"].get(Source.HUMAN, RAW) == ErrorRate(0, 2)
+    assert stats["carré"].get(Source.COMBINED, RAW) == ErrorRate(2, 2)
 
 
 def test_human_errors_are_capped_by_occurrences() -> None:
-    ratings = [HumanRating("P2", AFTER, None, None, ("triangle", "triangle"))]
+    ratings = [HumanRating("P2", FULL, None, None, ("carré", "carré", "carré"))]
     stats = compute_term_stats(_records(), ratings)
-    assert stats["triangle"].get(Source.HUMAN, AFTER) == ErrorRate(1, 1)
-
-
-def test_global_rate_and_improvement() -> None:
-    stats = compute_term_stats(_records(), []).values()
-    before = global_rate(stats, Source.STT, BEFORE)
-    after = global_rate(stats, Source.STT, AFTER)
-    assert before == ErrorRate(3, 4)
-    assert after == ErrorRate(0, 4)
-    assert relative_improvement(before.rate, after.rate) == 1.0
-    assert relative_improvement(0.0, 0.0) is None
-    assert relative_improvement(None, 0.5) is None
+    assert stats["carré"].get(Source.HUMAN, FULL) == ErrorRate(2, 2)
 
 
 def test_ranking_puts_worst_terms_first() -> None:
     records = [
-        TermRecord("P1", AFTER, "a", 4, 1),
-        TermRecord("P1", AFTER, "b", 2, 2),
-        TermRecord("P1", AFTER, "c", 9, 1),
-        TermRecord("P2", AFTER, "d", 1, 0),
+        TermRecord("P1", FULL, "a", 4, 1),
+        TermRecord("P1", FULL, "b", 2, 2),
+        TermRecord("P1", FULL, "c", 9, 1),
+        TermRecord("P2", FULL, "d", 1, 0),
     ]
     ranking = rank_terms(compute_term_stats(records, []).values())
     assert [s.term for s in ranking] == ["b", "a", "c", "d"]
@@ -91,17 +94,18 @@ def test_ranking_puts_worst_terms_first() -> None:
 
 def test_mean_scores() -> None:
     ratings = [
-        HumanRating("P1", AFTER, 4, 5, ()),
-        HumanRating("P2", AFTER, 2, None, ()),
-        HumanRating("P1", BEFORE, 1, 1, ()),
+        HumanRating("P1", FULL, 4, 5, ()),
+        HumanRating("P2", FULL, 2, None, ()),
+        HumanRating("P1", RAW, 1, 1, ()),
     ]
-    scores = mean_scores(ratings, AFTER)
+    scores = mean_scores(ratings, FULL)
     assert (scores.wolof, scores.pronunciation, scores.count) == (3, 5, 2)
+    assert mean_scores(ratings, NORMALIZED).count == 0
 
 
 def _write_human_csv(path: Path, *rows: str) -> Path:
     header = (
-        "id,version,texte_envoye,fichier_audio,note_correction_wolof,"
+        "id,condition,texte_envoye,fichier_audio,note_correction_wolof,"
         "note_prononciation_termes,mots_mal_prononces,commentaire"
     )
     path.write_text("\n".join([header, *rows]) + "\n", encoding="utf-8")
@@ -111,17 +115,23 @@ def _write_human_csv(path: Path, *rows: str) -> Path:
 def test_load_human_ratings_skips_empty_rows(tmp_path: Path) -> None:
     path = _write_human_csv(
         tmp_path / "h.csv",
-        "P1,avant,txt,audio/P1_avant.wav,2,1,hypoténuse; triangle,",
-        "P1,apres,txt,audio/P1_apres.wav,,,,",
+        "P1,brut,txt,audio/P1_brut.wav,2,1,hypoténuse; triangle,",
+        "P1,lexique,txt,audio/P1_lexique.wav,,,,",
     )
     [rating] = load_human_ratings(path)
-    assert rating == HumanRating("P1", BEFORE, 2, 1, ("hypoténuse", "triangle"))
+    assert rating == HumanRating("P1", RAW, 2, 1, ("hypoténuse", "triangle"))
 
 
 @pytest.mark.parametrize("score", ["0", "6", "bien"])
 def test_load_human_ratings_rejects_bad_scores(tmp_path: Path, score: str) -> None:
-    path = _write_human_csv(tmp_path / "h.csv", f"P1,avant,txt,a.wav,{score},3,,")
+    path = _write_human_csv(tmp_path / "h.csv", f"P1,brut,txt,a.wav,{score},3,,")
     with pytest.raises(HumanEvalError, match="ligne 2"):
+        load_human_ratings(path)
+
+
+def test_load_human_ratings_rejects_unknown_condition(tmp_path: Path) -> None:
+    path = _write_human_csv(tmp_path / "h.csv", "P1,avant,txt,a.wav,3,3,,")
+    with pytest.raises(HumanEvalError, match="condition inconnue"):
         load_human_ratings(path)
 
 

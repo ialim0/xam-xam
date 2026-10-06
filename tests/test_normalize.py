@@ -3,9 +3,11 @@ import pytest
 from xamxam.normalize import (
     MathNormalizer,
     NormalizationMode,
+    NumberLanguage,
     UnknownLanguageError,
     get_table,
     spell_french_number,
+    spell_wolof_number,
 )
 
 
@@ -94,3 +96,45 @@ def test_words_are_left_untouched(normalizer: MathNormalizer) -> None:
 def test_unknown_reading_language() -> None:
     with pytest.raises(UnknownLanguageError, match="locuteurs natifs"):
         get_table("wo")
+
+
+@pytest.mark.parametrize(
+    ("number", "words"),
+    [
+        (0, "tus"),
+        (5, "juróom"),
+        (7, "juróom ñaar"),
+        (10, "fukk"),
+        (11, "fukk ak benn"),
+        (25, "ñaar fukk ak juróom"),
+        (70, "juróom ñaar fukk"),
+        (100, "téeméer"),
+        (125, "téeméer ak ñaar fukk ak juróom"),
+        (200, "ñaar téeméer"),
+        (1000, "junni"),
+        (2026, "ñaar junni ak ñaar fukk ak juróom benn"),
+        (250_000, "ñaar téeméer ak juróom fukk junni"),
+    ],
+)
+def test_spell_wolof_number(number: int, words: str) -> None:
+    assert spell_wolof_number(number) == words
+
+
+def test_spell_wolof_number_out_of_range() -> None:
+    assert spell_wolof_number(1_000_000) == "1000000"
+    assert spell_wolof_number(-1) == "-1"
+
+
+@pytest.mark.parametrize(
+    ("number_language", "expected"),
+    [
+        (NumberLanguage.FRENCH, "B C égale vingt-cinq centimètres, trois virgule zéro cinq"),
+        (
+            NumberLanguage.WOLOF,
+            "B C égale ñaar fukk ak juróom centimètres, ñett virgule tus juróom",
+        ),
+    ],
+)
+def test_number_language_modes(number_language: NumberLanguage, expected: str) -> None:
+    normalizer = MathNormalizer(number_language=number_language)
+    assert normalizer.normalize("BC = 25 cm, 3,05") == expected

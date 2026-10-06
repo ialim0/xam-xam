@@ -69,3 +69,50 @@ def spell_french_number(n: int) -> str:
     if units:
         parts.append(_below_1000(units))
     return " ".join(parts)
+
+
+# --- Wolof -------------------------------------------------------------------
+# Numération wolof en orthographe officielle (CLAD) : base cinq jusqu'à dix, puis
+# multiplicateur + « fukk » (dix), « téeméer » (cent), « junni » (mille), liés par « ak ».
+# À FAIRE VALIDER par des locuteurs natifs : variantes courantes non retenues ici,
+# comme « fanweer » pour 30 ou la forme liée « ñaari » devant un multiplicateur.
+_WOLOF_UNITS = (
+    "tus", "benn", "ñaar", "ñett", "ñeent", "juróom",
+    "juróom benn", "juróom ñaar", "juróom ñett", "juróom ñeent",
+)  # fmt: skip
+
+MAX_SPELLED_WOLOF = 999_999
+
+
+def _wolof_compose(head: str, rest: int, spell_rest: str) -> str:
+    return head if rest == 0 else f"{head} ak {spell_rest}"
+
+
+def _wolof_below_100(n: int) -> str:
+    if n < 10:
+        return _WOLOF_UNITS[n]
+    tens, unit = divmod(n, 10)
+    head = "fukk" if tens == 1 else f"{_WOLOF_UNITS[tens]} fukk"
+    return _wolof_compose(head, unit, _WOLOF_UNITS[unit])
+
+
+def _wolof_below_1000(n: int) -> str:
+    hundreds, rest = divmod(n, 100)
+    if hundreds == 0:
+        return _wolof_below_100(rest)
+    head = "téeméer" if hundreds == 1 else f"{_WOLOF_UNITS[hundreds]} téeméer"
+    return _wolof_compose(head, rest, _wolof_below_100(rest) if rest else "")
+
+
+def spell_wolof_number(n: int) -> str:
+    """Écrit un entier en lettres wolof, ex. 25 → « ñaar fukk ak juróom ».
+
+    Les nombres négatifs ou supérieurs à MAX_SPELLED_WOLOF sont rendus en chiffres.
+    """
+    if n < 0 or n > MAX_SPELLED_WOLOF:
+        return str(n)
+    thousands, rest = divmod(n, 1000)
+    if thousands == 0:
+        return _wolof_below_1000(rest)
+    head = "junni" if thousands == 1 else f"{_wolof_below_1000(thousands)} junni"
+    return _wolof_compose(head, rest, _wolof_below_1000(rest) if rest else "")

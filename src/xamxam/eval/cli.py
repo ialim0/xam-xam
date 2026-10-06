@@ -11,6 +11,7 @@ from xamxam.config import (
     DEFAULT_LEXICON_PATH,
     DEFAULT_OUTPUT_DIR,
     DEFAULT_SENTENCES_PATH,
+    DEFAULT_TTS_CACHE_DIR,
     Settings,
 )
 from xamxam.errors import XamXamError
@@ -19,8 +20,9 @@ from xamxam.eval.human import write_human_template
 from xamxam.eval.records import OutputPaths
 from xamxam.eval.report import build_report
 from xamxam.eval.run import run_evaluation
+from xamxam.normalize import NumberLanguage
 from xamxam.pipeline import XamXamPipeline
-from xamxam.providers import ProviderName, create_providers
+from xamxam.providers import CachedTTSProvider, ProviderName, create_providers
 
 logger = logging.getLogger("xamxam.eval")
 
@@ -51,6 +53,20 @@ def build_parser() -> argparse.ArgumentParser:
         "--reading-language", default="fr", help="Langue de lecture des expressions mathématiques."
     )
     run.add_argument(
+        "--number-language",
+        type=NumberLanguage,
+        choices=list(NumberLanguage),
+        default=NumberLanguage.FRENCH,
+        help="Langue des nombres écrits en lettres : fr (français) ou wo (wolof).",
+    )
+    run.add_argument(
+        "--cache-dir",
+        type=Path,
+        default=DEFAULT_TTS_CACHE_DIR,
+        help="Cache des audios TTS : un texte déjà synthétisé n'est jamais régénéré.",
+    )
+    run.add_argument("--no-cache", action="store_true", help="Désactive le cache audio.")
+    run.add_argument(
         "--overwrite-human",
         action="store_true",
         help="Recrée la fiche d'évaluation humaine même si elle existe (annotations perdues).",
@@ -64,10 +80,15 @@ def build_parser() -> argparse.ArgumentParser:
 def _run(args: argparse.Namespace) -> None:
     paths = OutputPaths(args.output_dir)
     tts, stt = create_providers(args.provider, Settings.from_env())
+    cache: CachedTTSProvider | None = None
+    if not args.no_cache:
+        tts = cache = CachedTTSProvider(tts, args.cache_dir)
     result = run_evaluation(
         load_sentences(args.sentences),
         pipeline=XamXamPipeline.from_lexicon_file(
-            args.lexicon, reading_language=args.reading_language
+            args.lexicon,
+            reading_language=args.reading_language,
+            number_language=args.number_language,
         ),
         tts=tts,
         stt=stt,
@@ -75,6 +96,13 @@ def _run(args: argparse.Namespace) -> None:
         text_column=args.text_column,
     )
     write_human_template(result.transcriptions, paths.human_csv, overwrite=args.overwrite_human)
+    if cache is not None:
+        logger.info(
+            "Cache audio (%s) : %d réutilisé(s), %d généré(s).",
+            args.cache_dir,
+            cache.hits,
+            cache.misses,
+        )
     logger.info(
         "%d audios générés dans %s. Fiche humaine : %s",
         len(result.transcriptions),

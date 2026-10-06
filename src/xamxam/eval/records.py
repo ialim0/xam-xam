@@ -11,9 +11,23 @@ from pathlib import Path
 from xamxam.errors import XamXamError
 
 
-class Version(StrEnum):
-    BEFORE = "avant"  # texte brut
-    AFTER = "apres"  # texte passé par Xam-Xam
+class Condition(StrEnum):
+    """Les trois versions de chaque phrase envoyées au TTS, dans l'ordre des couches."""
+
+    RAW = "brut"  # texte d'origine, symboles compris
+    NORMALIZED = "normalise"  # normalisation mathématique seule
+    FULL = "lexique"  # normalisation puis réécriture par le lexique
+
+    @property
+    def label(self) -> str:
+        return _CONDITION_LABELS[self]
+
+
+_CONDITION_LABELS = {
+    Condition.RAW: "Texte brut",
+    Condition.NORMALIZED: "Normalisé seul",
+    Condition.FULL: "Normalisé + lexique",
+}
 
 
 class RecordsError(XamXamError):
@@ -30,8 +44,8 @@ class OutputPaths:
     def audio_dir(self) -> Path:
         return self.root / "audio"
 
-    def audio_file(self, sentence_id: str, version: Version) -> Path:
-        return self.audio_dir / f"{sentence_id}_{version}.wav"
+    def audio_file(self, sentence_id: str, condition: Condition) -> Path:
+        return self.audio_dir / f"{sentence_id}_{condition}.wav"
 
     @property
     def transcriptions_csv(self) -> Path:
@@ -57,7 +71,7 @@ class OutputPaths:
 @dataclass(frozen=True)
 class TranscriptionRecord:
     sentence_id: str
-    version: Version
+    condition: Condition
     sent_text: str
     transcript: str
     wer: float
@@ -67,14 +81,21 @@ class TranscriptionRecord:
 @dataclass(frozen=True)
 class TermRecord:
     sentence_id: str
-    version: Version
+    condition: Condition
     term: str
     occurrences: int
     errors: int
 
 
-_TRANSCRIPTION_COLUMNS = ("id", "version", "texte_envoye", "transcription", "wer", "fichier_audio")
-_TERM_COLUMNS = ("id", "version", "terme", "apparitions", "erreurs")
+_TRANSCRIPTION_COLUMNS = (
+    "id",
+    "condition",
+    "texte_envoye",
+    "transcription",
+    "wer",
+    "fichier_audio",
+)
+_TERM_COLUMNS = ("id", "condition", "terme", "apparitions", "erreurs")
 
 
 def _write_rows(path: Path, columns: tuple[str, ...], rows: Iterable[tuple[object, ...]]) -> None:
@@ -101,7 +122,7 @@ def write_transcriptions(path: Path, records: Iterable[TranscriptionRecord]) -> 
         path,
         _TRANSCRIPTION_COLUMNS,
         (
-            (r.sentence_id, r.version, r.sent_text, r.transcript, f"{r.wer:.4f}", r.audio_file)
+            (r.sentence_id, r.condition, r.sent_text, r.transcript, f"{r.wer:.4f}", r.audio_file)
             for r in records
         ),
     )
@@ -112,7 +133,7 @@ def read_transcriptions(path: Path) -> list[TranscriptionRecord]:
         return [
             TranscriptionRecord(
                 sentence_id=row["id"],
-                version=Version(row["version"]),
+                condition=Condition(row["condition"]),
                 sent_text=row["texte_envoye"],
                 transcript=row["transcription"],
                 wer=float(row["wer"]),
@@ -128,7 +149,7 @@ def write_terms(path: Path, records: Iterable[TermRecord]) -> None:
     _write_rows(
         path,
         _TERM_COLUMNS,
-        ((r.sentence_id, r.version, r.term, r.occurrences, r.errors) for r in records),
+        ((r.sentence_id, r.condition, r.term, r.occurrences, r.errors) for r in records),
     )
 
 
@@ -137,7 +158,7 @@ def read_terms(path: Path) -> list[TermRecord]:
         return [
             TermRecord(
                 sentence_id=row["id"],
-                version=Version(row["version"]),
+                condition=Condition(row["condition"]),
                 term=row["terme"],
                 occurrences=int(row["apparitions"]),
                 errors=int(row["erreurs"]),

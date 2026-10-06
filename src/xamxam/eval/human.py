@@ -10,14 +10,14 @@ from pathlib import Path
 
 from xamxam.errors import XamXamError
 from xamxam.eval.dataset import split_terms
-from xamxam.eval.records import TranscriptionRecord, Version
+from xamxam.eval.records import Condition, TranscriptionRecord
 from xamxam.lexicon import normalize_form
 
 logger = logging.getLogger(__name__)
 
 HUMAN_COLUMNS = (
     "id",
-    "version",
+    "condition",
     "texte_envoye",
     "fichier_audio",
     "note_correction_wolof",
@@ -35,7 +35,7 @@ class HumanEvalError(XamXamError):
 @dataclass(frozen=True)
 class HumanRating:
     sentence_id: str
-    version: Version
+    condition: Condition
     wolof_score: int | None
     pronunciation_score: int | None
     mispronounced: tuple[str, ...]
@@ -64,7 +64,7 @@ def write_human_template(
             writer.writerow(
                 (
                     record.sentence_id,
-                    record.version,
+                    record.condition,
                     record.sent_text,
                     record.audio_file,
                     "",
@@ -109,10 +109,10 @@ def load_human_ratings(path: Path) -> list[HumanRating]:
             if wolof is None and pron is None and not words:
                 continue
             try:
-                version = Version(row.get("version", ""))
+                condition = Condition(row.get("condition", ""))
             except ValueError:
                 raise HumanEvalError(
-                    f"{where} : version inconnue « {row.get('version')} »."
+                    f"{where} : condition inconnue « {row.get('condition')} »."
                 ) from None
-            ratings.append(HumanRating(row.get("id", ""), version, wolof, pron, words))
+            ratings.append(HumanRating(row.get("id", ""), condition, wolof, pron, words))
     return ratings

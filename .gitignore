@@ -24,8 +24,9 @@ env/
 .env.*
 !.env.example
 
-# Sorties générées (audio, transcriptions, rapports)
+# Sorties générées (audio, transcriptions, rapports) et cache audio
 outputs/
+.cache/
 
 # Éditeurs / OS
 .vscode/

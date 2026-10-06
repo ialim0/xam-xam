@@ -36,10 +36,14 @@ prononciations** dans le lexique.
 | `validated_by` | non | Locuteur natif qui a validé. **Vide = non validé.** |
 | `notes` | non | Contexte, hésitations, variantes régionales. |
 
-Règles vérifiées automatiquement (`pytest`) :
+Règles vérifiées automatiquement (`pytest`, ou `python -m xamxam.lexicon` pour un rapport lisible) :
 
 - une même graphie (terme ou alias, sans tenir compte de la casse) ne peut apparaître qu'une fois ;
-- aucun champ obligatoire vide, aucun champ inconnu.
+- aucun champ obligatoire vide, aucun champ inconnu ;
+- **aucun caractère hors de l'alphabet du TTS** dans les graphies et les prononciations. Le TTS
+  ignore silencieusement tout autre caractère (`²`, `√`, chiffres au-delà de 10…). L'alphabet
+  wolof contient notamment `ë ñ ó ŋ` ; le pulaar a ses propres lettres (`ɓ ɗ ƴ ŋ`). La liste
+  exacte est dans `src/xamxam/tts_alphabet.py`.
 
 Les termes composés n'ont pas besoin d'ordre particulier : « triangle rectangle » est toujours
 prioritaire sur « triangle ».

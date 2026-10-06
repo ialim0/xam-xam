@@ -1,4 +1,4 @@
-"""Étapes 1 et 2 : audio avant/après Xam-Xam, aller-retour STT, contrôle des termes cibles."""
+"""Étapes 1 et 2 : audio des trois conditions, aller-retour STT, contrôle des termes cibles."""
 
 from __future__ import annotations
 
@@ -9,10 +9,10 @@ from dataclasses import dataclass
 from xamxam.eval.align import TargetTerm, align_words, check_target_terms, tokenize, word_error_rate
 from xamxam.eval.dataset import Sentence, TextColumn
 from xamxam.eval.records import (
+    Condition,
     OutputPaths,
     TermRecord,
     TranscriptionRecord,
-    Version,
     write_terms,
     write_transcriptions,
 )
@@ -42,6 +42,16 @@ def build_target(term: str, index: LexiconIndex) -> TargetTerm:
     )
 
 
+def condition_texts(pipeline: XamXamPipeline, source: str) -> dict[Condition, str]:
+    """Texte envoyé au TTS pour chaque condition ; chacune ajoute une couche à la précédente."""
+    prepared = pipeline.prepare(source)
+    return {
+        Condition.RAW: prepared.source,
+        Condition.NORMALIZED: prepared.normalized,
+        Condition.FULL: prepared.text,
+    }
+
+
 def run_evaluation(
     sentences: Sequence[Sentence],
     *,
@@ -64,11 +74,10 @@ def run_evaluation(
     for sentence in sentences:
         source = sentence.text(text_column)
         targets = [build_target(term, pipeline.index) for term in sentence.target_terms]
-        texts = {Version.BEFORE: source, Version.AFTER: pipeline.prepare(source).text}
 
-        for version, text in texts.items():
+        for condition, text in condition_texts(pipeline, source).items():
             audio = tts.synthesize(text, language=text_column)
-            audio_path = paths.audio_file(sentence.id, version)
+            audio_path = paths.audio_file(sentence.id, condition)
             audio_path.write_bytes(audio)
             transcript = stt.transcribe(audio, language=text_column)
 
@@ -76,7 +85,7 @@ def run_evaluation(
             transcriptions.append(
                 TranscriptionRecord(
                     sentence_id=sentence.id,
-                    version=version,
+                    condition=condition,
                     sent_text=text,
                     transcript=transcript,
                     wer=word_error_rate(alignment),
@@ -84,7 +93,7 @@ def run_evaluation(
                 )
             )
             terms.extend(
-                TermRecord(sentence.id, version, check.term, check.occurrences, check.errors)
+                TermRecord(sentence.id, condition, check.term, check.occurrences, check.errors)
                 for check in check_target_terms(source, transcript, targets)
             )
         logger.info("Phrase %s traitée.", sentence.id)

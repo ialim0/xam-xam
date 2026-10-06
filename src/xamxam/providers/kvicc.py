@@ -169,6 +169,11 @@ class KviccTTSProvider(TTSProvider):
     def __repr__(self) -> str:
         return f"KviccTTSProvider(url={self._url!r})"
 
+    @property
+    def cache_identity(self) -> str:
+        # L'URL est volontairement exclue : elle change d'un déploiement à l'autre.
+        return f"kvicc:{TTS_MODEL}:speed={self._speed}:pitch={self._pitch}"
+
     def synthesize(self, text: str, *, language: str = "wo") -> bytes:
         voice = TTS_VOICES.get(language)
         if voice is None:

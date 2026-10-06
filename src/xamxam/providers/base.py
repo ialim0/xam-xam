@@ -20,6 +20,12 @@ class TTSProvider(ABC):
 
     name: str
 
+    @property
+    def cache_identity(self) -> str:
+        """Tout ce qui, en plus du texte et de la langue, change l'audio produit
+        (modèle, vitesse…). Sert à construire la clé du cache audio."""
+        return self.name
+
     @abstractmethod
     def synthesize(self, text: str, *, language: str = "wo") -> bytes:
         """Retourne l'audio au format WAV."""

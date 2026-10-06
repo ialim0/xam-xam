@@ -6,7 +6,7 @@ import re
 from collections.abc import Callable
 from enum import StrEnum
 
-from xamxam.normalize.tables import FRENCH, ReadingTable
+from xamxam.normalize.tables import FRENCH, NUMBER_SPELLERS, NumberLanguage, ReadingTable
 
 _NUMBER = r"\d+(?:[.,]\d+)?"
 _SUPERSCRIPT_DIGITS = "⁰¹²³⁴⁵⁶⁷⁸⁹"
@@ -32,8 +32,16 @@ class MathNormalizer:
     les exposants (« cm² »), et les nombres sont écrits en lettres en dernier.
     """
 
-    def __init__(self, table: ReadingTable = FRENCH) -> None:
+    def __init__(
+        self, table: ReadingTable = FRENCH, *, number_language: NumberLanguage | None = None
+    ) -> None:
         self._table = table
+        # Par défaut, les nombres sont lus dans la langue de la table.
+        self._spell_number = (
+            NUMBER_SPELLERS[NumberLanguage(number_language)]
+            if number_language is not None
+            else table.spell_number
+        )
         self._sqrt = re.compile(r"√\s*(\([^()]*\)|" + _NUMBER + r"|\w+)")
         self._units = re.compile(
             r"(" + _NUMBER + r")\s*(" + _alternation(list(table.units)) + r")(?!\w)"
@@ -117,16 +125,16 @@ class MathNormalizer:
             integer, decimals = match.groups()
             # Les zéros de tête se lisent un par un : 3,05 → « trois virgule zéro cinq ».
             stripped = decimals.lstrip("0")
-            words = [self._table.spell_number(0)] * (len(decimals) - len(stripped))
+            words = [self._spell_number(0)] * (len(decimals) - len(stripped))
             if stripped:
-                words.append(self._table.spell_number(int(stripped)))
-            spelled_integer = self._table.spell_number(int(integer))
+                words.append(self._spell_number(int(stripped)))
+            spelled_integer = self._spell_number(int(integer))
             return f"{spelled_integer} {self._table.decimal_word} {' '.join(words)}"
 
         return self._decimal.sub(replace, text)
 
     def _read_integers(self, text: str) -> str:
-        return self._integer.sub(lambda m: self._table.spell_number(int(m.group())), text)
+        return self._integer.sub(lambda m: self._spell_number(int(m.group())), text)
 
     def _spell_point_names(self, text: str) -> str:
         # Noms de points et de segments (AB, ABC) : lus lettre par lettre.

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from xamxam.lexicon import Lexicon, LexiconIndex, load_lexicon
-from xamxam.normalize import MathNormalizer, get_table
+from xamxam.normalize import MathNormalizer, NumberLanguage, get_table
 from xamxam.pronounce import PronunciationRewriter, Replacement
 
 
@@ -28,14 +28,30 @@ class XamXamPipeline:
     peut ainsi être corrigé ensuite par le lexique.
     """
 
-    def __init__(self, lexicon: Lexicon, *, reading_language: str = "fr") -> None:
+    def __init__(
+        self,
+        lexicon: Lexicon,
+        *,
+        reading_language: str = "fr",
+        number_language: NumberLanguage = NumberLanguage.FRENCH,
+    ) -> None:
         self._index = LexiconIndex(lexicon)
-        self._normalizer = MathNormalizer(get_table(reading_language))
+        self._normalizer = MathNormalizer(
+            get_table(reading_language), number_language=number_language
+        )
         self._rewriter = PronunciationRewriter(self._index)
 
     @classmethod
-    def from_lexicon_file(cls, path: str | Path, *, reading_language: str = "fr") -> XamXamPipeline:
-        return cls(load_lexicon(path), reading_language=reading_language)
+    def from_lexicon_file(
+        cls,
+        path: str | Path,
+        *,
+        reading_language: str = "fr",
+        number_language: NumberLanguage = NumberLanguage.FRENCH,
+    ) -> XamXamPipeline:
+        return cls(
+            load_lexicon(path), reading_language=reading_language, number_language=number_language
+        )
 
     @property
     def index(self) -> LexiconIndex:
