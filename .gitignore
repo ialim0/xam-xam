@@ -31,3 +31,7 @@ outputs/
 .vscode/
 .idea/
 .DS_Store
+
+# Documentation officielle des organisateurs : ne jamais en versionner de copie
+openapi*.json
+swagger*.json
