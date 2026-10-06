@@ -22,6 +22,7 @@ import httpx
 
 from xamxam import __version__
 from xamxam.config import Settings
+from xamxam.metrics import record_request
 from xamxam.providers.audio import concat_wav
 from xamxam.providers.base import (
     ProviderError,
@@ -30,6 +31,7 @@ from xamxam.providers.base import (
     TTSProvider,
 )
 from xamxam.providers.chunking import split_text
+from xamxam.providers.ratelimit import RateLimiter
 
 TTS_MODEL = "kiriku-tts"
 STT_MODEL = "m-kiriku-asr"
@@ -49,7 +51,7 @@ class KviccClient:
     """Client HTTP de l'API : authentification, limitation du débit, nouvelles tentatives.
 
     Le TTS et le STT consomment le même quota (une clé par équipe) : ils doivent partager
-    une seule instance pour que la limitation du débit soit globale.
+    un même limiteur (`limiter`) pour que la limitation du débit soit globale.
     """
 
     def __init__(
@@ -59,6 +61,7 @@ class KviccClient:
         timeout: float = 60.0,
         max_retries: int = 2,
         min_interval: float = 60.0 / REQUESTS_PER_MINUTE,
+        limiter: RateLimiter | None = None,
         transport: httpx.BaseTransport | None = None,
         clock: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], None] = time.sleep,
@@ -72,13 +75,18 @@ class KviccClient:
             headers={"Authorization": f"Bearer {api_key}", "User-Agent": f"xamxam/{__version__}"},
         )
         self._max_retries = max_retries
-        self._min_interval = min_interval
-        self._clock = clock
         self._sleep = sleep
-        self._last_request: float | None = None
+        self._limiter = limiter or RateLimiter(
+            60.0 / min_interval if min_interval > 0 else 0, clock=clock, sleep=sleep
+        )
+        self.request_count = 0
 
     def __repr__(self) -> str:
-        return f"KviccClient(min_interval={self._min_interval})"
+        return f"KviccClient(interval={self._limiter.interval})"
+
+    @property
+    def limiter(self) -> RateLimiter:
+        return self._limiter
 
     def close(self) -> None:
         self._http.close()
@@ -87,7 +95,10 @@ class KviccClient:
         """POST avec respect du débit et nouvelles tentatives sur 429 / 503."""
         attempt = 0
         while True:
-            self._throttle()
+            # Espace les requêtes pour rester sous la limite au lieu de subir des 429.
+            self._limiter.acquire()
+            self.request_count += 1
+            record_request("kiriku")
             try:
                 response = self._http.post(url, **kwargs)
             except httpx.HTTPError as exc:
@@ -99,14 +110,6 @@ class KviccClient:
             if response.is_error:
                 raise ProviderError(_error_message(response))
             return response
-
-    def _throttle(self) -> None:
-        # Espace les requêtes pour rester sous la limite au lieu de subir des 429.
-        if self._last_request is not None:
-            wait = self._last_request + self._min_interval - self._clock()
-            if wait > 0:
-                self._sleep(wait)
-        self._last_request = self._clock()
 
 
 def _retry_after(response: httpx.Response) -> float:
@@ -127,14 +130,23 @@ def _error_message(response: httpx.Response) -> str:
     return f"API KVICC : erreur {response.status_code} : {message}{hint}"
 
 
+def _audio_upload(audio: bytes) -> tuple[str, bytes, str]:
+    """Nom et type MIME du fichier envoyé au STT, déduits de la signature du contenu."""
+    if audio[:4] == b"OggS":
+        return ("audio.ogg", audio, "audio/ogg")
+    return ("audio.wav", audio, "audio/wav")
+
+
 def _require(value: str | None, message: str) -> str:
     if not value:
         raise ProviderNotConfiguredError(message)
     return value
 
 
-def client_from_settings(settings: Settings) -> KviccClient:
-    return KviccClient(_require(settings.kvicc_api_key, "KVICC_API_KEY n'est pas définie."))
+def client_from_settings(settings: Settings, *, limiter: RateLimiter | None = None) -> KviccClient:
+    return KviccClient(
+        _require(settings.kvicc_api_key, "KVICC_API_KEY n'est pas définie."), limiter=limiter
+    )
 
 
 class KviccTTSProvider(TTSProvider):
@@ -221,6 +233,10 @@ class KviccSTTProvider(STTProvider):
     def __repr__(self) -> str:
         return f"KviccSTTProvider(url={self._url!r})"
 
+    @property
+    def cache_identity(self) -> str:
+        return f"kvicc:{STT_MODEL}"
+
     def transcribe(self, audio: bytes, *, language: str = "wo") -> str:
         api_language = STT_LANGUAGES.get(language)
         if api_language is None:
@@ -230,7 +246,7 @@ class KviccSTTProvider(STTProvider):
             )
         response = self._client.post(
             self._url,
-            files={"file": ("audio.wav", audio, "audio/wav")},
+            files={"file": _audio_upload(audio)},
             data={"model": STT_MODEL, "language": api_language, "response_format": "json"},
         )
         try:

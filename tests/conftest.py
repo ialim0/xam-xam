@@ -38,3 +38,9 @@ def index(lexicon: Lexicon) -> LexiconIndex:
 @pytest.fixture
 def pipeline(lexicon: Lexicon) -> XamXamPipeline:
     return XamXamPipeline(lexicon)
+
+
+@pytest.fixture
+def anyio_backend() -> str:
+    # Tests asynchrones (plugin anyio, fourni avec Starlette) : boucle asyncio uniquement.
+    return "asyncio"

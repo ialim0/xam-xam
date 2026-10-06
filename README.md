@@ -86,7 +86,8 @@ Copiez `.env.example` en `.env` et renseignez les clés dont vous disposez, puis
   pulaar et sérère) ;
 - sans `KVICC_*`, le TTS et le STT **mock** sont utilisés (audio silencieux, aller-retour exact) ;
 - sans `TIMALENS_API_KEY`, la génération vidéo est désactivée et un message l'indique ;
-- sans `WHATSAPP_TOKEN`, le webhook répond 503.
+- sans les variables du bot (`WHATSAPP_*`, `GEMINI_*`), le webhook répond 503 et `/health`
+  liste les variables manquantes.
 
 Le client KVICC respecte les limites de l'API : il espace les requêtes (30 par minute et par clé,
 TTS et STT confondus), réessaie après un `429` ou un `503` en suivant `Retry-After`, et découpe par
@@ -95,6 +96,29 @@ soit environ 14 minutes.
 
 > ⚠️ L'intégration TimaLens (`src/xamxam/timalens/client.py`) est encore un squelette : ses
 > endpoints restent à renseigner à partir de la documentation officielle.
+
+### Bot WhatsApp
+
+L'élève envoie la photo d'un exercice, une note vocale en wolof, ou les deux. Il reçoit un
+accusé de réception immédiat, puis une **note vocale en wolof** qui explique la résolution
+étape par étape, et la réponse finale en texte.
+
+```
+WhatsApp ─► webhook (signature vérifiée, 200 immédiat)
+              └─► tâche de fond : médias ─► STT Kiriku ─► Gemini (JSON validé)
+                    ─► vérification sympy (Pythagore, Thalès ; une correction au plus)
+                    ─► Xam-Xam ─► TTS Kiriku ─► OGG Opus ─► note vocale + réponse finale
+```
+
+- Les requêtes Kiriku passent par une file unique (30 par minute, TTS et STT confondus) ;
+  l'élève est prévenu si l'attente dépasse 30 s. Limite par élève configurable, numéros
+  illimités pour l'équipe (`UNLIMITED_NUMBERS`).
+- Audios TTS et transcriptions STT en cache par empreinte.
+- Médias supprimés après traitement ; les logs ne contiennent que des identifiants hachés et
+  des métriques.
+
+Mise en route locale avec ngrok et déploiement sur Cloud Run :
+[docs/deploiement.md](docs/deploiement.md).
 
 ### Serveur de développement
 
@@ -115,7 +139,10 @@ src/xamxam/
 ├── providers/   interfaces TTSProvider / STTProvider, mock, API Kiriku du KVICC, cache audio
 ├── tts_alphabet.py  caractères acceptés par les voix TTS (wolof, pulaar)
 ├── timalens/    client vidéo optionnel (désactivé sans clé)
-├── whatsapp/    webhook FastAPI (squelette)
+├── llm/         interface LLMProvider, implémentation Gemini, prompt, schéma JSON
+├── verify/      recalcul sympy des résultats (Pythagore, Thalès)
+├── media/       ffmpeg : OGG Opus, durée, découpage des audios
+├── whatsapp/    webhook Meta, client Graph, orchestration du bot, limites, confidentialité
 └── eval/        évaluation avant/après : run, alignement, fiche humaine, métriques, rapport
 ```
 

@@ -6,7 +6,7 @@ from xamxam.providers.base import (
     STTProvider,
     TTSProvider,
 )
-from xamxam.providers.cache import CachedTTSProvider
+from xamxam.providers.cache import CachedSTTProvider, CachedTTSProvider
 from xamxam.providers.factory import (
     ProviderName,
     create_providers,
@@ -14,14 +14,17 @@ from xamxam.providers.factory import (
     create_tts_provider,
 )
 from xamxam.providers.mock import MockSTTProvider, MockTTSProvider
+from xamxam.providers.ratelimit import RateLimiter
 
 __all__ = [
+    "CachedSTTProvider",
     "CachedTTSProvider",
     "MockSTTProvider",
     "MockTTSProvider",
     "ProviderError",
     "ProviderName",
     "ProviderNotConfiguredError",
+    "RateLimiter",
     "STTProvider",
     "TTSProvider",
     "create_providers",

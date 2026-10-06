@@ -36,6 +36,11 @@ class STTProvider(ABC):
 
     name: str
 
+    @property
+    def cache_identity(self) -> str:
+        """Tout ce qui, en plus de l'audio et de la langue, change la transcription."""
+        return self.name
+
     @abstractmethod
     def transcribe(self, audio: bytes, *, language: str = "wo") -> str:
         """Retourne la transcription de l'audio."""

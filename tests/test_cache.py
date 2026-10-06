@@ -57,3 +57,31 @@ def test_no_temporary_file_is_left(tmp_path: Path) -> None:
     files = [p for p in tmp_path.rglob("*") if p.is_file()]
     assert [p.suffix for p in files] == [".wav"]
     assert files[0] == tts.cache_path("triangle", "wo")
+
+
+class CountingSTT(MockSTTProvider):
+    def __init__(self) -> None:
+        super().__init__()
+        self.calls = 0
+
+    def transcribe(self, audio: bytes, *, language: str = "wo") -> str:
+        self.calls += 1
+        return super().transcribe(audio, language=language)
+
+
+def test_stt_cache_by_audio_fingerprint(tmp_path: Path) -> None:
+    from xamxam.providers import CachedSTTProvider
+
+    audio = MockTTSProvider().synthesize("ñaar fukk")
+    inner = CountingSTT()
+    stt = CachedSTTProvider(inner, tmp_path)
+    assert stt.transcribe(audio) == stt.transcribe(audio) == "ñaar fukk"
+    assert inner.calls == 1 and (stt.hits, stt.misses) == (1, 1)
+    # Autre langue ou autre audio : nouvelle transcription.
+    stt.transcribe(audio, language="ff")
+    stt.transcribe(MockTTSProvider().synthesize("ñett"))
+    assert inner.calls == 3
+    # Le cache survit à une nouvelle instance.
+    fresh = CountingSTT()
+    assert CachedSTTProvider(fresh, tmp_path).transcribe(audio) == "ñaar fukk"
+    assert fresh.calls == 0

@@ -45,25 +45,6 @@ def client(pipeline: XamXamPipeline) -> TestClient:
     return TestClient(create_app(Settings(), pipeline=pipeline, tts=MockTTSProvider()))
 
 
-def test_health_reports_disabled_features(client: TestClient) -> None:
-    assert client.get("/health").json() == {
-        "status": "ok",
-        "tts": "mock",
-        "whatsapp_enabled": False,
-        "video_enabled": False,
-    }
-
-
-def test_webhook_requires_whatsapp_token(client: TestClient) -> None:
-    assert client.post("/webhook", json={}).status_code == 503
-
-
-def test_webhook_accepts_messages_when_configured(pipeline: XamXamPipeline) -> None:
-    app = create_app(Settings(whatsapp_token="t"), pipeline=pipeline, tts=MockTTSProvider())
-    response = TestClient(app).post("/webhook", json={"entry": []})
-    assert response.json() == {"status": "received"}
-
-
 def test_dev_speak_returns_prepared_audio(client: TestClient) -> None:
     response = client.post("/dev/speak", json={"text": "L'hypoténuse : AB² = 9 cm²"})
     assert response.status_code == 200

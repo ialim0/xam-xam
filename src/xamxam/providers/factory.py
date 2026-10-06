@@ -9,6 +9,7 @@ from xamxam.config import Settings
 from xamxam.providers.base import ProviderNotConfiguredError, STTProvider, TTSProvider
 from xamxam.providers.kvicc import KviccSTTProvider, KviccTTSProvider, client_from_settings
 from xamxam.providers.mock import MockSTTProvider, MockTTSProvider
+from xamxam.providers.ratelimit import RateLimiter
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +40,9 @@ def create_stt_provider(name: ProviderName, settings: Settings) -> STTProvider:
     return MockSTTProvider()
 
 
-def create_providers(name: ProviderName, settings: Settings) -> tuple[TTSProvider, STTProvider]:
+def create_providers(
+    name: ProviderName, settings: Settings, *, limiter: RateLimiter | None = None
+) -> tuple[TTSProvider, STTProvider]:
     """Crée le couple TTS / STT. Avec KVICC, les deux partagent un client, donc un quota."""
     use_tts = _use_kvicc(name, settings.kvicc_tts_configured, "TTS")
     use_stt = _use_kvicc(name, settings.kvicc_stt_configured, "STT")
@@ -51,7 +54,7 @@ def create_providers(name: ProviderName, settings: Settings) -> tuple[TTSProvide
         )
     if not use_tts:
         return MockTTSProvider(), MockSTTProvider()
-    client = client_from_settings(settings)
+    client = client_from_settings(settings, limiter=limiter)
     return (
         KviccTTSProvider.from_settings(settings, client),
         KviccSTTProvider.from_settings(settings, client),
