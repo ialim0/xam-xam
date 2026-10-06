@@ -1,0 +1,33 @@
+# Byte-compiled / caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Environnements virtuels
+.venv/
+venv/
+env/
+
+# Secrets : ne jamais versionner le fichier .env
+.env
+.env.*
+!.env.example
+
+# Sorties générées (audio, transcriptions, rapports)
+outputs/
+
+# Éditeurs / OS
+.vscode/
+.idea/
+.DS_Store
