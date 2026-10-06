@@ -22,7 +22,12 @@ from xamxam.eval.report import build_report
 from xamxam.eval.run import run_evaluation
 from xamxam.normalize import NumberLanguage
 from xamxam.pipeline import XamXamPipeline
-from xamxam.providers import CachedTTSProvider, ProviderName, create_providers
+from xamxam.providers import (
+    CachedSTTProvider,
+    CachedTTSProvider,
+    ProviderName,
+    create_providers,
+)
 
 logger = logging.getLogger("xamxam.eval")
 
@@ -63,9 +68,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--cache-dir",
         type=Path,
         default=DEFAULT_TTS_CACHE_DIR,
-        help="Cache des audios TTS : un texte déjà synthétisé n'est jamais régénéré.",
+        help="Cache TTS (et STT dans le dossier voisin « stt ») de l'évaluation.",
     )
-    run.add_argument("--no-cache", action="store_true", help="Désactive le cache audio.")
+    run.add_argument("--no-cache", action="store_true", help="Désactive les caches TTS et STT.")
     run.add_argument(
         "--overwrite-human",
         action="store_true",
@@ -100,6 +105,8 @@ def _run(args: argparse.Namespace) -> None:
     cache: CachedTTSProvider | None = None
     if not args.no_cache:
         tts = cache = CachedTTSProvider(tts, args.cache_dir)
+        # Évaluation uniquement : les transcriptions des phrases de test sont mises en cache.
+        stt = CachedSTTProvider(stt, args.cache_dir.parent / "stt")
     result = run_evaluation(
         load_sentences(args.sentences),
         pipeline=XamXamPipeline.from_lexicon_file(

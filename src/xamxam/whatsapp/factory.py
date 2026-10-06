@@ -9,7 +9,6 @@ from xamxam.llm.base import LLMConfigurationError
 from xamxam.llm.factory import create_llm
 from xamxam.pipeline import XamXamPipeline
 from xamxam.providers import (
-    CachedSTTProvider,
     CachedTTSProvider,
     ProviderName,
     RateLimiter,
@@ -50,7 +49,10 @@ def build_bot(
             lexicon_terms=[term.term for term in pipeline.index.lexicon.terms],
             max_explanation_chars=bot_settings.max_explanation_chars,
         ),
-        stt=CachedSTTProvider(stt, settings.cache_dir / "stt"),
+        # Pas de cache STT dans le bot : aucun contenu envoyé par l'élève (photo, audio,
+        # transcription) n'est conservé après traitement. Seul le cache TTS (audios
+        # d'explication générés) est actif. Le cache STT reste réservé à l'évaluation.
+        stt=stt,
         tts=CachedTTSProvider(tts, settings.cache_dir / "tts"),
         pipeline=pipeline,
         kiriku_limiter=limiter,

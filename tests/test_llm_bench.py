@@ -164,3 +164,18 @@ def test_cli_llm_with_unknown_model_fails_cleanly(photos: Path, tmp_path: Path) 
         )
         == 1
     )
+
+
+def test_example_configurations_are_allowed() -> None:
+    from conftest import ROOT
+    from xamxam.llm.allowlist import load_allowlist
+
+    allowlist = load_allowlist()
+    configs = load_configs(ROOT / "data/eval/configurations_llm.example.json")
+    assert {c.model for c in configs} == {
+        "mistral.ministral-3-14b-instruct",
+        "qwen.qwen3-vl-235b-a22b",
+        "mistral.mistral-large-3-675b-instruct",
+    }
+    for config in configs:
+        allowlist.require(config.provider, config.model, region=config.region)

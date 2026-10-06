@@ -113,7 +113,8 @@ WhatsApp ─► webhook (signature vérifiée, 200 immédiat)
 - Les requêtes Kiriku passent par une file unique (30 par minute, TTS et STT confondus) ;
   l'élève est prévenu si l'attente dépasse 30 s. Limite par élève configurable, numéros
   illimités pour l'équipe (`UNLIMITED_NUMBERS`).
-- Audios TTS et transcriptions STT en cache par empreinte.
+- Audios d'explication (TTS) en cache par empreinte ; les transcriptions ne sont pas mises en
+  cache par le bot (le cache STT sert uniquement aux commandes d'évaluation).
 - Uniquement des **modèles open source** (Apache 2.0) : Amazon Bedrock en déploiement principal,
   ou un serveur auto-hébergé (vLLM, Ollama). Liste blanche versionnée, comparaison des modèles
   avec `python -m xamxam.eval llm` : voir [docs/modeles.md](docs/modeles.md) et
@@ -126,11 +127,12 @@ WhatsApp ─► webhook (signature vérifiée, 200 immédiat)
 - Les **notes vocales** sont envoyées au **STT de Kiriku**, les **explications** au **TTS de
   Kiriku**.
 - **Tous les messages** transitent par **WhatsApp (Meta)**.
-- Xam-Xam ne conserve **ni les photos ni les notes vocales** : elles sont supprimées à la fin du
-  traitement. Les journaux ne contiennent aucun contenu, seulement des identifiants hachés et
-  des métriques. **Exception** : les caches conservent les audios des explications (TTS) et
-  les **transcriptions des notes vocales** (STT), indexés par empreinte, sans numéro de
-  téléphone, et sauvegardés avec le cache.
+- **Aucun contenu envoyé par l'élève** (photo, audio, transcription) **n'est conservé** par
+  Xam-Xam après traitement : les médias sont supprimés à la fin de chaque demande et les
+  transcriptions ne sont jamais écrites sur disque (un test le vérifie). Seuls les **audios
+  d'explication générés** sont mis en cache (cache TTS, indexé par empreinte du texte).
+  Les journaux ne contiennent aucun contenu, seulement des identifiants hachés et des
+  métriques.
 
 Déploiement sur AWS (EC2, Docker Compose, HTTPS par Caddy) : [docs/deploiement-aws.md](docs/deploiement-aws.md).
 Alternative Cloud Run et test local avec ngrok : [docs/deploiement-gcp.md](docs/deploiement-gcp.md).

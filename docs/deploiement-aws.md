@@ -1,7 +1,7 @@
 # Déploiement du bot WhatsApp Xam-Xam sur AWS
 
 Cible : **une instance EC2** (t3.small, région eu-west-3 Paris) qui fait tourner le bot et
-**Caddy** (HTTPS automatique) avec **Docker Compose**. Le cache TTS/STT vit sur un **volume EBS
+**Caddy** (HTTPS automatique) avec **Docker Compose**. Le cache des audios d'explication (TTS) vit sur un **volume EBS
 chiffré** séparé du disque système, sauvegardé chaque jour dans un **bucket S3** privé.
 Aucun port SSH : l'administration passe par **SSM Session Manager**, les déploiements par
 **SSM Run Command**.
@@ -200,8 +200,8 @@ Pas de `ssm:SendCommand`, pas de suppression S3, aucun accès aux autres paramè
 Le bot tourne dans un conteneur : pour qu'il appelle Bedrock avec le rôle de l'instance, la
 limite de sauts IMDSv2 vaut **2** (`imds_hop_limit`). Conséquence : le conteneur peut obtenir
 les identifiants temporaires du rôle, donc toutes les permissions ci-dessus. Avec
-`imds_hop_limit = 1`, le conteneur n'y a plus accès, mais Bedrock n'est alors utilisable
-qu'avec une autre source d'identifiants (non prévue ici).
+`imds_hop_limit = 1`, le conteneur n'y a plus accès et Bedrock devient inutilisable : aucune
+clé statique n'est prévue, par choix. IMDSv2 reste obligatoire dans les deux cas.
 
 Région : aucun modèle open source de la liste blanche n'est proposé dans `eu-west-3` (Paris).
 Utilisez par exemple `BEDROCK_REGION=eu-west-1` (Irlande) et l'ARN correspondant dans

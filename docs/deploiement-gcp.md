@@ -50,8 +50,8 @@ Dans la console Meta, **WhatsApp → Configuration → Webhook** :
    **messages**.
 
 Envoyez une photo d'exercice au numéro de test : l'accusé de réception arrive aussitôt, la
-note vocale et la réponse finale quelques secondes plus tard. En local, les caches sont dans
-`.cache/tts` et `.cache/stt`.
+note vocale et la réponse finale quelques secondes plus tard. En local, le cache des audios
+d'explication est dans `.cache/tts`.
 
 ## 2. Sur Google Cloud Run
 
@@ -62,7 +62,7 @@ note vocale et la réponse finale quelques secondes plus tard. En local, les cac
 | `--max-instances=1` | la file d'attente Kiriku (30 requêtes/min, TTS + STT) et les limites par élève sont en mémoire : une seule instance garantit un quota vraiment global |
 | `--min-instances=1` | pas de démarrage à froid, et la file en mémoire n'est pas perdue quand le trafic s'arrête |
 | `--no-cpu-throttling` | le webhook répond 200 tout de suite et traite en tâche de fond : sans CPU alloué en permanence, ce traitement serait ralenti après la réponse |
-| volume Cloud Storage sur `/cache` | les caches TTS et STT survivent aux redémarrages et aux redéploiements |
+| volume Cloud Storage sur `/cache` | le cache des audios d'explication survit aux redémarrages et aux redéploiements |
 
 ### Commandes
 
@@ -134,8 +134,8 @@ vérifiez la [page de tarification Cloud Run](https://cloud.google.com/run/prici
 ## Confidentialité et exploitation
 
 - Les médias reçus sont téléchargés dans un dossier temporaire, supprimé à la fin de chaque
-  traitement. Les caches ne contiennent que des audios générés et des transcriptions,
-  indexés par empreinte.
+  traitement. Aucun contenu envoyé par l'élève n'est conservé ; le cache ne contient que les
+  audios d'explication générés, indexés par empreinte.
 - Les logs ne contiennent ni numéro ni contenu : une ligne `job {...}` par demande, avec un
   identifiant haché (HMAC avec `LOG_HASH_KEY`), le résultat, la vérification, les durées par
   étape, le nombre de requêtes par service et le type d'erreur éventuel.

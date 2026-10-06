@@ -59,12 +59,19 @@ régions **à vérifier**.
   d'inférence EU (requêtes routées vers Francfort, Stockholm, Irlande ou Paris), mais sa
   licence de recherche l'exclut.
 - **Le Cap (af-south-1)** : aucun des modèles ci-dessus n'y est proposé.
-- **Recommandation** : `BEDROCK_REGION=eu-west-1` (Irlande) avec Ministral 3 14B ou 8B, ou
-  Qwen3 VL. Les photos et transcriptions sont alors traitées dans l'UE, hors de Paris.
+- **Configuration par défaut** : `BEDROCK_REGION=eu-west-1` (Irlande) et
+  `BEDROCK_MODEL_ID=mistral.ministral-3-14b-instruct`. Les photos et transcriptions sont
+  traitées dans l'UE, hors de Paris.
+- **Choix définitif** : après l'évaluation sur photos réelles entre **Qwen3 VL 235B**,
+  **Mistral Large 3** et **Ministral 3 14B** (configurations prêtes dans
+  [`data/eval/configurations_llm.example.json`](../data/eval/configurations_llm.example.json)).
+  Mistral Large 3 n'étant proposé dans aucune région européenne, il est évalué depuis
+  `us-east-1` : à garder en tête pour la résidence des données s'il était retenu.
 - **Appel d'outils** : aucun modèle de la liste blanche ne le documente sur `bedrock-runtime`
   ; ils passent donc par le prompt et la réparation. Plusieurs documentent en revanche les
-  **sorties structurées** (Mistral Large 3, Ministral 3 8B et 14B) : les prendre en charge
-  serait la prochaine amélioration (non implémentée).
+  **sorties structurées** (Mistral Large 3, Ministral 3 8B et 14B). **Règle de décision** :
+  elles seront implémentées si l'évaluation donne moins de **90 %** de JSON valide du premier
+  coup pour le modèle retenu.
 - **Accès au modèle** dans le compte AWS (abonnement ou activation éventuels) : **à vérifier**
   dans la console Bedrock avant le déploiement.
 

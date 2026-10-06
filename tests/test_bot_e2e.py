@@ -346,3 +346,92 @@ async def test_failed_translation_sends_apology_and_logs_without_content(
     assert "Traduction échouée : Marqueurs de termes incorrects : 1 manquant(s)" in caplog.text
     assert '"outcome": "traduction_echouee"' in caplog.text
     assert "Les données" not in caplog.text and "Données yi" not in caplog.text
+
+
+async def test_bot_never_writes_a_transcription_to_disk(
+    pipeline: XamXamPipeline, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Garde-fou de confidentialité : le bot assemblé par la vraie fabrique (celle de la
+    production) ne doit écrire aucune transcription sur disque, ni en cache ni ailleurs."""
+    import builtins
+    import os
+
+    from xamxam.whatsapp import factory
+
+    transcript = "TRANSCRIPTION-SECRETE-6f2a"
+    secret = transcript.encode()
+    written: list[str] = []
+
+    # Toute écriture de fichier passe par l'un de ces points : on les espionne.
+    real_open, real_os_write = builtins.open, os.write
+    real_write_bytes, real_write_text = Path.write_bytes, Path.write_text
+
+    def spy_write_bytes(self: Path, data: bytes) -> int:
+        if secret in data:
+            written.append(str(self))
+        return real_write_bytes(self, data)
+
+    def spy_write_text(self: Path, data: str, *args, **kwargs) -> int:
+        if transcript in data:
+            written.append(str(self))
+        return real_write_text(self, data, *args, **kwargs)
+
+    def spy_os_write(fd: int, data: bytes) -> int:
+        if secret in bytes(data):
+            written.append(f"fd {fd}")
+        return real_os_write(fd, data)
+
+    class SpyFile:
+        def __init__(self, handle, name: str) -> None:
+            self._handle, self._name = handle, name
+
+        def write(self, data):  # type: ignore[no-untyped-def]
+            raw = data.encode() if isinstance(data, str) else bytes(data)
+            if secret in raw:
+                written.append(self._name)
+            return self._handle.write(data)
+
+        def __getattr__(self, attribute: str):  # type: ignore[no-untyped-def]
+            return getattr(self._handle, attribute)
+
+        def __enter__(self):  # type: ignore[no-untyped-def]
+            self._handle.__enter__()
+            return self
+
+        def __exit__(self, *exc):  # type: ignore[no-untyped-def]
+            return self._handle.__exit__(*exc)
+
+    def spy_open(file, mode="r", *args, **kwargs):  # type: ignore[no-untyped-def]
+        handle = real_open(file, mode, *args, **kwargs)
+        return SpyFile(handle, str(file)) if any(m in mode for m in "wax+") else handle
+
+    monkeypatch.setattr(Path, "write_bytes", spy_write_bytes)
+    monkeypatch.setattr(Path, "write_text", spy_write_text)
+    monkeypatch.setattr(os, "write", spy_os_write)
+    monkeypatch.setattr(builtins, "open", spy_open)
+
+    stt = FakeSTT(transcript)
+    monkeypatch.setattr(factory, "create_providers", lambda *a, **k: (MockTTSProvider(), stt))
+    monkeypatch.setattr(factory, "create_llm", lambda *a, **k: ScriptedLLM([make_solution()]))
+    settings = Settings(
+        whatsapp_token="t",
+        whatsapp_phone_number_id="1",
+        whatsapp_verify_token="v",
+        whatsapp_app_secret="s",
+        cache_dir=tmp_path / "cache",
+    )
+    bot = factory.build_bot(settings, pipeline, BotSettings(grouping_window_seconds=0))
+    graph = FakeGraph(
+        media={"img-1": (JPEG, "image/jpeg"), "aud-1": (_voice_note(65), "audio/ogg")}
+    )
+    bot._meta = graph.client()
+
+    await _deliver(bot, image_message(), audio_message())
+
+    _assert_explanation_sent(graph)
+    assert len(stt.received) == 2  # la note de 65 s a bien été transcrite (2 morceaux)
+    assert written == [], f"transcription écrite sur disque : {written}"
+    for path in (tmp_path / "cache").rglob("*"):
+        assert not path.is_file() or secret not in path.read_bytes(), path
+    assert not (tmp_path / "cache" / "stt").exists()
+    assert any((tmp_path / "cache" / "tts").rglob("*.wav"))  # le cache TTS reste actif
