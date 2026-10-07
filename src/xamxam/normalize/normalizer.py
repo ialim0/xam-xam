@@ -55,7 +55,9 @@ class MathNormalizer:
         self._standalone_minus = re.compile(r"(?<!\S)-(?=\s|\d)")
         self._decimal = re.compile(r"(\d+)[.,](\d+)")
         self._integer = re.compile(r"\d+")
-        self._point_names = re.compile(r"\b[A-Z]{2,3}\b")
+        # Noms de points et de segments : une à trois capitales isolées (A, AB, ABC), mais pas
+        # une capitale élidée (« C'est », « L'hypoténuse »).
+        self._point_names = re.compile(r"(?<![\w'’])[A-Z]{1,3}(?![\w'’])")
         self._steps: tuple[Callable[[str], str], ...] = (
             self._read_square_roots,
             self._read_units,
@@ -137,8 +139,9 @@ class MathNormalizer:
         return self._integer.sub(lambda m: self._spell_number(int(m.group())), text)
 
     def _spell_point_names(self, text: str) -> str:
-        # Noms de points et de segments (AB, ABC) : lus lettre par lettre.
-        return self._point_names.sub(lambda m: " ".join(m.group()), text)
+        # Chaque lettre est remplacée par son nom écrit pour la voix (AB → « aa bee »).
+        names = self._table.letter_names
+        return self._point_names.sub(lambda m: " ".join(names[c] for c in m.group()), text)
 
 
 def _tidy_spaces(text: str) -> str:

@@ -52,5 +52,5 @@ def test_dev_speak_returns_prepared_audio(client: TestClient) -> None:
     with wave.open(io.BytesIO(response.content), "rb") as wav:
         assert wav.getnframes() > 0
     assert MockSTTProvider().transcribe(response.content) == (
-        "L'ipoteniws: A B au carré égale neuf centimètres carrés"
+        "L'ipoteniws: aa bee au carré égale neuf centimètres carrés"
     )

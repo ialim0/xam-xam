@@ -58,14 +58,14 @@ def test_raw_mode_keeps_symbols(normalizer: MathNormalizer) -> None:
 @pytest.mark.parametrize(
     ("text", "expected"),
     [
-        ("AB²", "A B au carré"),
-        ("BC = 5 cm", "B C égale cinq centimètres"),
+        ("AB²", "aa bee au carré"),
+        ("BC = 5 cm", "bee see égale cinq centimètres"),
         ("√25", "racine carrée de vingt-cinq"),
         ("3,6", "trois virgule six"),
         ("3.6", "trois virgule six"),
         ("3,05", "trois virgule zéro cinq"),
         ("3/4", "trois sur quatre"),
-        ("AB/AC", "A B sur A C"),
+        ("AB/AC", "aa bee sur aa see"),
         ("1 cm", "un centimètre"),
         ("1,5 m", "un virgule cinq mètre"),
         ("2,5 m", "deux virgule cinq mètres"),
@@ -78,8 +78,8 @@ def test_raw_mode_keeps_symbols(normalizer: MathNormalizer) -> None:
         ("5-3", "cinq moins trois"),
         ("-3", "moins trois"),
         ("½", "un demi"),
-        ("(AB) // (CD)", "(A B) parallèle à (C D)"),
-        ("BC² = AB² + AC².", "B C au carré égale A B au carré plus A C au carré."),
+        ("(AB) // (CD)", "(aa bee) parallèle à (see dee)"),
+        ("BC² = AB² + AC².", "bee see au carré égale aa bee au carré plus aa see au carré."),
     ],
 )
 def test_normalize_expressions(normalizer: MathNormalizer, text: str, expected: str) -> None:
@@ -128,13 +128,37 @@ def test_spell_wolof_number_out_of_range() -> None:
 @pytest.mark.parametrize(
     ("number_language", "expected"),
     [
-        (NumberLanguage.FRENCH, "B C égale vingt-cinq centimètres, trois virgule zéro cinq"),
+        (NumberLanguage.FRENCH, "bee see égale vingt-cinq centimètres, trois virgule zéro cinq"),
         (
             NumberLanguage.WOLOF,
-            "B C égale ñaar fukk ak juróom centimètres, ñett virgule tus juróom",
+            "bee see égale ñaar fukk ak juróom centimètres, ñett virgule tus juróom",
         ),
     ],
 )
 def test_number_language_modes(number_language: NumberLanguage, expected: str) -> None:
     normalizer = MathNormalizer(number_language=number_language)
     assert normalizer.normalize("BC = 25 cm, 3,05") == expected
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("ABC ab triangle rectangle la ci A.", "aa bee see ab triangle rectangle la ci aa."),
+        ("(MN) // (BC)", "(em en) parallèle à (bee see)"),
+        ("AM/AB = AN/AC", "aa em sur aa bee égale aa en sur aa see"),
+        ("Ci benn triangle", "Ci benn triangle"),  # mots en majuscule initiale : intacts
+        ("C'est L'hypoténuse D’après A.", "C'est L'hypoténuse D’après aa."),  # élisions
+    ],
+)
+def test_point_names_use_spoken_letter_names(text: str, expected: str) -> None:
+    assert MathNormalizer().normalize(text) == expected
+
+
+def test_every_letter_name_is_pronounceable() -> None:
+    from string import ascii_uppercase
+
+    from xamxam.tts_alphabet import unsupported_characters
+
+    names = get_table("fr").letter_names
+    assert set(names) == set(ascii_uppercase)
+    assert all(unsupported_characters(name) == [] for name in names.values())

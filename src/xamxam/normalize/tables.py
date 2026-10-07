@@ -37,10 +37,26 @@ class ReadingTable:
     # Unité → (singulier, pluriel).
     units: Mapping[str, tuple[str, str]]
     unicode_fractions: Mapping[str, str]
+    # Nom des lettres pour les noms de points (A, AB, ABC), écrit pour que la voix wolof
+    # le prononce : épelée telle quelle (« A B »), une lettre isolée est avalée par le TTS.
+    letter_names: Mapping[str, str]
 
     def exponent(self, n: int) -> str:
         return self.exponent_words.get(n) or f"{self.power_word} {n}"
 
+
+# Noms français des lettres en orthographe wolof (B = « bé » → bee), pour les noms de points.
+# Mesuré sur le TTS Kiriku le 7 octobre 2026 : « aa bee » est entendu « a b », alors que
+# « A B » disparaît. BROUILLON : à confirmer à l'oreille par un locuteur, lettre par lettre.
+# fmt: off
+_FRENCH_LETTER_NAMES = {
+    "A": "aa", "B": "bee", "C": "see", "D": "dee", "E": "ë", "F": "ef",
+    "G": "jee", "H": "aas", "I": "ii", "J": "jii", "K": "kaa", "L": "el",
+    "M": "em", "N": "en", "O": "oo", "P": "pee", "Q": "ku", "R": "er",
+    "S": "es", "T": "tee", "U": "u", "V": "wee", "W": "dubal wee", "X": "iks",
+    "Y": "igrek", "Z": "sed",
+}
+# fmt: on
 
 FRENCH = ReadingTable(
     language="fr",
@@ -98,6 +114,7 @@ FRENCH = ReadingTable(
         }
     ),
     unicode_fractions=MappingProxyType({"½": "un demi", "¼": "un quart", "¾": "trois quarts"}),
+    letter_names=MappingProxyType(_FRENCH_LETTER_NAMES),
 )
 
 _TABLES: dict[str, ReadingTable] = {FRENCH.language: FRENCH}

@@ -93,7 +93,7 @@ async def test_photo_in_voice_note_out_through_signed_webhook(pipeline: XamXamPi
     # L'explication passe par Xam-Xam : symboles convertis en mots, termes réécrits.
     [spoken] = tts.texts
     assert "ipoteniws" in spoken and "teyorem bu Pitagor" in spoken
-    assert "A B égale quatre centimètres" in spoken
+    assert "aa bee égale quatre centimètres" in spoken
     assert not set("²=√") & set(spoken)
 
 
@@ -328,7 +328,7 @@ async def test_translation_mode_protects_lexicon_terms(pipeline: XamXamPipeline)
     _assert_explanation_sent(graph)
     assert "hypoténuse" not in translator.received[0] and "⟦T1⟧" in translator.received[0]
     [spoken] = tts.texts
-    assert spoken.startswith("Données yi A B égale quatre centimètres")
+    assert spoken.startswith("Données yi aa bee égale quatre centimètres")
     assert "ipoteniws" in spoken  # terme restauré puis réécrit par le lexique
 
 

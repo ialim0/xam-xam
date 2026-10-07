@@ -21,16 +21,17 @@ def test_rewrite_without_known_terms_is_identity(index: LexiconIndex) -> None:
 def test_pipeline_normalizes_then_rewrites(pipeline: XamXamPipeline) -> None:
     prepared = pipeline.prepare("Ci benn triangle rectangle, BC² = AB² + AC².")
     assert prepared.normalized == (
-        "Ci benn triangle rectangle, B C au carré égale A B au carré plus A C au carré."
+        "Ci benn triangle rectangle, bee see au carré égale aa bee au carré plus aa see au carré."
     )
     assert prepared.text == (
-        "Ci benn tiriyaangal regtaangal, B C au carré égale A B au carré plus A C au carré."
+        "Ci benn tiriyaangal regtaangal, bee see au carré égale aa bee au carré "
+        "plus aa see au carré."
     )
 
 
 def test_pipeline_rewrites_terms_produced_by_normalization(pipeline: XamXamPipeline) -> None:
     # « // » devient « parallèle à », puis « parallèle » est corrigé par le lexique.
-    assert pipeline.prepare("(AB) // (CD)").text == "(A B) paralel à (C D)"
+    assert pipeline.prepare("(AB) // (CD)").text == "(aa bee) paralel à (see dee)"
 
 
 def test_pipeline_normalizes_unicode(pipeline: XamXamPipeline) -> None:
