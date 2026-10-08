@@ -19,6 +19,13 @@ def _boolean(raw: str) -> bool:
     raise ValueError(raw)
 
 
+def _reply_mode(raw: str) -> str:
+    value = raw.casefold()
+    if value not in {"audio", "texte"}:
+        raise ValueError(raw)
+    return value
+
+
 @dataclass(frozen=True)
 class BotSettings:
     # Attente après le premier message pour regrouper photo et note vocale.
@@ -32,6 +39,11 @@ class BotSettings:
     # Mémoire de conversation, en mémoire vive uniquement.
     memory_minutes: float = 60.0
     agent_max_steps: int = 6
+    # « audio » : l'élève ne reçoit que des notes vocales (texte en secours si la synthèse
+    # échoue) ; « texte » : réponses écrites, avec audio et boutons à la demande.
+    reply_mode: str = "audio"
+    # Autocollant animé envoyé à chaque message pendant le traitement (False : désactivé).
+    waiting_sticker: bool = True
     # Au-delà, l'élève est prévenu que la réponse va tarder.
     wait_notice_threshold_seconds: float = 30.0
     kiriku_requests_per_minute: float = 30.0
@@ -54,6 +66,8 @@ class BotSettings:
             "XAMXAM_USER_REQUESTS_PER_HOUR": ("user_requests_per_hour", int),
             "XAMXAM_VIDEOS_PER_DAY": ("videos_per_day", int),
             "XAMXAM_MEMORY_MINUTES": ("memory_minutes", float),
+            "XAMXAM_REPLY_MODE": ("reply_mode", _reply_mode),
+            "XAMXAM_WAITING_STICKER": ("waiting_sticker", _boolean),
             "XAMXAM_NUMBER_LANGUAGE": ("number_language", NumberLanguage),
             "XAMXAM_AUDIO_SELF_CHECK": ("audio_self_check", _boolean),
         }

@@ -211,15 +211,15 @@ def test_prompt_describes_the_state() -> None:
         video=True,
         videos_left_today=3,
         video_in_progress=False,
-        audio_sent_for_exercise=True,
+        audio_count=1,
         exercise="ABC rectangle en A → BC = 5 cm",
     )
     prompt = build_agent_prompt(state, max_chars=800)
     assert "disponible (3 restante(s) aujourd'hui)" in prompt
-    assert "Audio déjà envoyé pour l'exercice en cours : oui." in prompt
+    assert "Notes vocales envoyées pour l'exercice en cours : 1." in prompt
     assert "ABC rectangle en A → BC = 5 cm" in prompt and "800" in prompt
     assert "Ne donne jamais un résultat chiffré qui ne vient pas de resoudre_exercice" in prompt
-    busy = build_agent_prompt(AgentState(False, True, 0, True, False, None), max_chars=800)
+    busy = build_agent_prompt(AgentState(False, True, 0, True, 0, None), max_chars=800)
     assert "une vidéo est déjà en préparation" in busy and "indisponible" in busy
     assert make_solution()  # le schéma de solution reste importable avec l'agent
 

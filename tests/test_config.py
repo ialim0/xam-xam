@@ -61,6 +61,12 @@ def test_bot_settings_from_env() -> None:
     assert settings.grouping_window_seconds == 8.0
     assert not settings.audio_self_check
     assert BotSettings.from_env({"XAMXAM_AUDIO_SELF_CHECK": "true"}).audio_self_check
+    assert BotSettings().reply_mode == "audio"
+    assert BotSettings().waiting_sticker
+    assert not BotSettings.from_env({"XAMXAM_WAITING_STICKER": "non"}).waiting_sticker
+    assert BotSettings.from_env({"XAMXAM_REPLY_MODE": "Texte"}).reply_mode == "texte"
+    with pytest.raises(XamXamError, match="XAMXAM_REPLY_MODE"):
+        BotSettings.from_env({"XAMXAM_REPLY_MODE": "video"})
     with pytest.raises(XamXamError, match="XAMXAM_AUDIO_SELF_CHECK"):
         BotSettings.from_env({"XAMXAM_AUDIO_SELF_CHECK": "maybe"})
     with pytest.raises(XamXamError, match="XAMXAM_MAX_EXPLANATION_CHARS"):

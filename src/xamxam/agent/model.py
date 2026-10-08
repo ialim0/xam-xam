@@ -209,12 +209,14 @@ class ScriptedAgentModel(AgentModel):
         self._turns = list(turns)
         self.received: list[list[dict[str, Any]]] = []
         self.systems: list[str] = []
+        self.tools: list[list[str]] = []  # noms des outils proposés à chaque étape
 
     def next_turn(
         self, system: str, messages: list[dict[str, Any]], tools: list[dict[str, Any]]
     ) -> ModelTurn:
         self.systems.append(system)
         self.received.append(list(messages))
+        self.tools.append([tool["name"] for tool in tools])
         if not self._turns:
             return say("")  # plus rien de prévu : l'agent s'arrête
         turn = self._turns.pop(0)

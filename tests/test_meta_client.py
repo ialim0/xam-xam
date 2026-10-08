@@ -100,8 +100,10 @@ async def test_buttons_video_and_typing_indicator_payloads() -> None:
     await client.send_video("221", "https://cdn.test/v.mp4", "Pythagore")
     await client.mark_read_and_typing("wamid.in")
     await client.send_text("221", "a" * 5000)
+    await client.send_sticker("221", "media-9")
 
-    buttons, video, typing, text = bodies
+    buttons, video, typing, text, sticker = bodies
+    assert sticker["type"] == "sticker" and sticker["sticker"] == {"id": "media-9"}
     action = buttons["interactive"]["action"]["buttons"]
     assert [b["reply"]["title"] for b in action] == ["🔊 Écouter", "x" * 20, "c"]
     assert buttons["interactive"]["type"] == "button"

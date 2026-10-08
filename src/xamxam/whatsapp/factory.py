@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+from pathlib import Path
 
 from xamxam.agent import GeminiAgentModel
 from xamxam.config import Settings
@@ -24,6 +25,9 @@ from xamxam.whatsapp.privacy import IdHasher
 from xamxam.whatsapp.settings import BotSettings
 
 logger = logging.getLogger(__name__)
+
+# « Néggal tuuti » : autocollant animé (WebP 512×512) envoyé pendant chaque traitement.
+WAITING_STICKER_PATH = Path(__file__).with_name("assets") / "attente.webp"
 
 
 def build_bot(
@@ -79,4 +83,5 @@ def build_bot(
         video=build_timalens_client(settings),
         video_voice=settings.timalens_voice,
         video_max_credits=settings.timalens_max_credits,
+        waiting_sticker=WAITING_STICKER_PATH.read_bytes() if bot_settings.waiting_sticker else None,
     )

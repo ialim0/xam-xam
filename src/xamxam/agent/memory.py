@@ -26,7 +26,7 @@ class Conversation:
     last_activity: float
     # Dernier exercice résolu : sert à l'audio, à la vidéo et aux questions de suivi.
     solution: MathSolution | None = None
-    audio_sent: bool = False  # une explication audio a déjà été envoyée pour cet exercice
+    audio_count: int = 0  # notes vocales envoyées pour l'exercice en cours
     video_in_progress: bool = False
     videos: list[str] = field(default_factory=list)  # titres des vidéos envoyées
 

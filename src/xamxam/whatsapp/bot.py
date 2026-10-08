@@ -28,7 +28,6 @@ from pathlib import Path
 from typing import Any
 
 from xamxam.agent import (
-    TOOL_DECLARATIONS,
     AgentModel,
     AgentState,
     Conversation,
@@ -38,7 +37,14 @@ from xamxam.agent import (
     run_agent,
 )
 from xamxam.agent.memory import STUDENT, TUTOR
-from xamxam.agent.prompt import CREATE_VIDEO, OFFER_BUTTONS, SEND_AUDIO, SEND_TEXT, SOLVE
+from xamxam.agent.prompt import (
+    CREATE_VIDEO,
+    OFFER_BUTTONS,
+    SEND_AUDIO,
+    SEND_TEXT,
+    SOLVE,
+    tool_declarations,
+)
 from xamxam.audio_feedback import synthesize_checked
 from xamxam.errors import XamXamError
 from xamxam.llm import LLMProvider, MathSolution, ProblemInput, SolutionStatus
@@ -140,8 +146,13 @@ class XamXamBot:
         video: TimaLensClient | None = None,
         video_voice: str | None = None,
         video_max_credits: float | None = None,
+        waiting_sticker: bytes | None = None,
     ) -> None:
         self._meta = meta
+        # Autocollant « Néggal tuuti » envoyé à chaque message pendant le traitement ;
+        # téléversé une fois, puis réutilisé par son identifiant de média.
+        self._waiting_sticker = waiting_sticker
+        self._sticker_media_id: str | None = None
         # Sans Kiriku (stt/tts None), l'agent répond en texte et ne transcrit pas les audios.
         self._llm = llm
         self._agent = agent
@@ -192,6 +203,11 @@ class XamXamBot:
         return self._tts is not None
 
     @property
+    def audio_only(self) -> bool:
+        """Réponses uniquement vocales : demandé par la configuration et Kiriku disponible."""
+        return self._settings.reply_mode == "audio" and self._tts is not None
+
+    @property
     def video_enabled(self) -> bool:
         return self._video is not None
 
@@ -240,8 +256,9 @@ class XamXamBot:
                 return
             first = burst.messages[0]
             await self._typing(first.message_id)
-            if first.kind in (MessageKind.IMAGE, MessageKind.AUDIO):
-                # Photo ou audio : le traitement prend du temps, l'élève est prévenu.
+            waiting_shown = await self._send_waiting_sticker(sender)
+            if not waiting_shown and first.kind in (MessageKind.IMAGE, MessageKind.AUDIO):
+                # Sans autocollant : photo ou audio prennent du temps, l'élève est prévenu.
                 await self._reply(sender, self._messages.ack)
             await self._wait_for_burst(burst)
             self._bursts.pop(sender, None)
@@ -262,19 +279,53 @@ class XamXamBot:
         if any(m.kind in (MessageKind.IMAGE, MessageKind.AUDIO) for m in burst.messages):
             await asyncio.sleep(window - short)
 
+    async def _send_waiting_sticker(self, sender: str) -> bool:
+        """Autocollant d'attente ; un identifiant expiré (30 jours chez Meta) est renouvelé."""
+        if self._waiting_sticker is None:
+            return False
+        for attempt in (1, 2):
+            try:
+                if self._sticker_media_id is None:
+                    self._sticker_media_id = await self._meta.upload_media(
+                        self._waiting_sticker, "image/webp", "attente.webp"
+                    )
+                await self._meta.send_sticker(sender, self._sticker_media_id)
+                return True
+            except XamXamError as exc:
+                self._sticker_media_id = None
+                if attempt == 2:
+                    logger.warning("Autocollant d'attente impossible (%s).", type(exc).__name__)
+        return False
+
     async def _typing(self, message_id: str) -> None:
         try:
             await self._meta.mark_read_and_typing(message_id)
         except XamXamError as exc:  # confort seulement : jamais bloquant
             logger.info("Indicateur de saisie impossible (%s).", type(exc).__name__)
 
-    async def _reply(self, sender: str, text: str) -> bool:
+    async def _reply(self, sender: str, text: str, *, spoken: bool = True) -> bool:
+        """Message fixe (accusé, erreur, limite) : note vocale en mode audio, texte sinon
+        ou si la synthèse échoue. `spoken=False` pour ce qui doit rester écrit (un lien)."""
+        if spoken and self.audio_only:
+            try:
+                await self._send_voice(sender, text)
+                return True
+            except XamXamError as exc:
+                logger.warning(
+                    "Message vocal impossible (%s) : envoi en texte.", type(exc).__name__
+                )
         try:
             await self._meta.send_text(sender, text)
             return True
         except XamXamError as exc:
             logger.warning("Envoi d'un message impossible (%s).", type(exc).__name__)
             return False
+
+    async def _send_voice(self, sender: str, text: str) -> None:
+        ogg = await self._speak(text)
+        with timed("envoi"):
+            media_id = await self._meta.upload_media(ogg, "audio/ogg", "xamxam.ogg")
+            await self._meta.send_audio(sender, media_id)
 
     # --- Traitement ----------------------------------------------------------------
 
@@ -403,8 +454,9 @@ class XamXamBot:
             video=self._video is not None,
             videos_left_today=self._video_quota.remaining(turn.sender, turn.user),
             video_in_progress=conversation.video_in_progress,
-            audio_sent_for_exercise=conversation.audio_sent,
+            audio_count=conversation.audio_count,
             exercise=_summary(conversation.solution) if conversation.solution else None,
+            audio_only=self.audio_only,
         )
         system = build_agent_prompt(state, max_chars=self._settings.max_explanation_chars)
         with timed("agent"):
@@ -459,7 +511,7 @@ class XamXamBot:
         explanation = await self._wolof_explanation(solution)
         conversation = turn.conversation
         conversation.solution = solution
-        conversation.audio_sent = False  # nouvel exercice
+        conversation.audio_count = 0  # nouvel exercice
         conversation.note(TUTOR, f"[exercice résolu] {_summary(solution)}")
         return {
             "statut": "ok",
@@ -529,12 +581,17 @@ class XamXamBot:
         text = truncate_explanation(_clean(text), self._settings.max_explanation_chars)
         if not text:
             return {"statut": "erreur", "detail": "texte vide"}
-        ogg = await self._speak(text)
-        with timed("envoi"):
-            media_id = await self._meta.upload_media(ogg, "audio/ogg", "xamxam.ogg")
-            await self._meta.send_audio(turn.sender, media_id)
+        try:
+            await self._send_voice(turn.sender, text)
+        except XamXamError as exc:
+            if not self.audio_only:
+                raise
+            # Mode audio : l'élève doit quand même recevoir la réponse.
+            logger.warning("Note vocale impossible (%s) : envoi en texte.", type(exc).__name__)
+            await self._tool_send_text(turn, text)
+            return {"statut": "envoye_en_texte"}
         turn.replied = True
-        turn.conversation.audio_sent = True
+        turn.conversation.audio_count += 1
         turn.conversation.note(TUTOR, f"[note vocale envoyée] {text}")
         return {"statut": "envoye"}
 
@@ -604,7 +661,7 @@ class XamXamBot:
         except XamXamError as exc:
             # Vidéo trop lourde pour WhatsApp, par exemple : le lien suffit.
             logger.warning("Envoi de la vidéo impossible (%s) : lien envoyé.", type(exc).__name__)
-            await self._reply(sender, self._messages.video_link.format(link=link))
+            await self._reply(sender, self._messages.video_link.format(link=link), spoken=False)
         conversation.videos.append(title)
         conversation.note(TUTOR, f"[vidéo envoyée : {title}]")
         logger.info(
@@ -616,11 +673,10 @@ class XamXamBot:
 class _TurnToolbox:
     """Outils de l'agent pour un tour : chaque appel agit pour l'élève de ce tour."""
 
-    declarations = TOOL_DECLARATIONS
-
     def __init__(self, bot: XamXamBot, turn: _Turn) -> None:
         self._bot = bot
         self._turn = turn
+        self.declarations = tool_declarations(audio_only=bot.audio_only)
 
     async def execute(self, name: str, args: dict[str, Any]) -> dict[str, Any]:
         bot, turn = self._bot, self._turn
@@ -631,6 +687,9 @@ class _TurnToolbox:
 
         if name == SOLVE:
             return await bot._tool_solve(turn, text("question"))
+        if bot.audio_only and name in (SEND_TEXT, OFFER_BUTTONS):
+            # Mode audio : un texte demandé malgré tout par le modèle est dit à voix haute.
+            return await bot._tool_send_audio(turn, text("texte"))
         if name == SEND_TEXT:
             return await bot._tool_send_text(turn, text("texte"))
         if name == SEND_AUDIO:
@@ -650,4 +709,7 @@ class _TurnToolbox:
         if self._turn.replied:
             logger.info("Texte final de l'agent ignoré : réponse déjà envoyée.")
             return
-        await self._bot._tool_send_text(self._turn, text)
+        if self._bot.audio_only:
+            await self._bot._tool_send_audio(self._turn, text)
+        else:
+            await self._bot._tool_send_text(self._turn, text)

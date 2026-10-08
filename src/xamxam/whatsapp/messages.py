@@ -23,7 +23,7 @@ class BotMessages:
         "Ñu bari ñoo ngi laaj fi léegi. Sa tontu dina yàgg tuuti : xaaral ma, dinaa la tontu."
     )
     audio_too_long: str = "Sa kàddu gi dafa gudd lool. Yónnee ma kàddu gu gàttee ñaari simili."
-    text_too_long: str = "Votre message est trop long. Envoyez une question plus courte."
+    text_too_long: str = "Sa bataaxal dafa gudd lool. Yónnee ma laaj bu gàttee."
     rate_limited: str = "Laaj nga lu bari ci waxtu wii. Jéemaatal ci kanam, ba beneen yoon."
     error: str = "Am na jafe-jafe. Baal ma, jéemaatal ci kanam."
     video_caption: str = "Vidéo Xam-Xam : {title}"

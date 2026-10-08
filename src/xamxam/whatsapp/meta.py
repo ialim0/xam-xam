@@ -138,6 +138,10 @@ class MetaClient:
         # Un audio OGG Opus est présenté par WhatsApp comme une note vocale.
         await self._send(to, {"type": "audio", "audio": {"id": media_id}})
 
+    async def send_sticker(self, to: str, media_id: str) -> None:
+        """Autocollant WebP 512×512 (100 Ko fixe, 500 Ko animé), déjà téléversé."""
+        await self._send(to, {"type": "sticker", "sticker": {"id": media_id}})
+
     async def send_video(self, to: str, link: str, caption: str = "") -> None:
         """Vidéo par lien HTTPS : Meta la télécharge lui-même (16 Mo au plus)."""
         video: dict[str, str] = {"link": link}

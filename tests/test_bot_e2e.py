@@ -34,7 +34,7 @@ from xamxam.llm import LLMError
 from xamxam.llm.mock import ScriptedLLM
 from xamxam.media import wav_to_ogg_opus
 from xamxam.pipeline import XamXamPipeline
-from xamxam.providers import MockTTSProvider, RateLimiter
+from xamxam.providers import MockTTSProvider, ProviderError, RateLimiter
 from xamxam.whatsapp import create_app
 from xamxam.whatsapp.messages import BotMessages
 from xamxam.whatsapp.payloads import WebhookPayload, extract_messages
@@ -251,8 +251,8 @@ async def test_memory_carries_the_conversation_and_escalates_to_video(
     history = json.dumps(second_turn, ensure_ascii=False)
     assert "[exercice résolu]" in history and f"Tontu bi : {ANSWER}" in history
     assert second_turn[-1]["content"] == "dégguma"
-    assert "Audio déjà envoyé pour l'exercice en cours : non." in agent.systems[3]
-    assert "Audio déjà envoyé pour l'exercice en cours : oui." in agent.systems[5]
+    assert "Notes vocales envoyées pour l'exercice en cours : 0." in agent.systems[3]
+    assert "Notes vocales envoyées pour l'exercice en cours : 1." in agent.systems[5]
     assert _student_message(agent, 5) == "🎬 Vidéo"  # clic sur le bouton = texte
 
     assert graph.kinds[-3:] == ["audio", "audio", "video"]
@@ -306,7 +306,9 @@ async def test_photo_and_voice_note_are_grouped(pipeline: XamXamPipeline) -> Non
     graph = FakeGraph(media={"img-1": (JPEG, "image/jpeg"), "aud-1": (_voice_note(5), "audio/ogg")})
     stt = FakeSTT("BC lan la wara gis ?")
     agent = ScriptedAgentModel(list(SOLVE_THEN_EXPLAIN))
-    settings = BotSettings(grouping_window_seconds=0.3, text_grouping_seconds=0.1)
+    settings = BotSettings(
+        grouping_window_seconds=0.3, text_grouping_seconds=0.1, reply_mode="texte"
+    )
     bot = build_bot(
         graph,
         ScriptedLLM([make_solution()]),
@@ -421,7 +423,7 @@ async def test_video_quota_and_single_video_in_progress(pipeline: XamXamPipeline
         pipeline=pipeline,
         agent=agent,
         video=FakeTimaLens().client(),
-        settings=BotSettings(grouping_window_seconds=0, videos_per_day=1),
+        settings=BotSettings(grouping_window_seconds=0, videos_per_day=1, reply_mode="texte"),
     )
 
     await _deliver(bot, text_message("vidéo", "wamid.1"))
@@ -534,7 +536,7 @@ async def test_completed_notification_is_not_replayed_after_restart(
 
 
 async def test_user_limit_and_unlimited_numbers(pipeline: XamXamPipeline) -> None:
-    settings = BotSettings(grouping_window_seconds=0, user_requests_per_hour=1)
+    settings = BotSettings(grouping_window_seconds=0, user_requests_per_hour=1, reply_mode="texte")
     graph = FakeGraph()
     agent = ScriptedAgentModel([say("un"), say("deux")])
     bot = build_bot(graph, ScriptedLLM([]), pipeline=pipeline, settings=settings, agent=agent)
@@ -737,3 +739,187 @@ async def test_final_comment_is_not_doubled_and_markers_are_removed(
     await _deliver(bot, text_message("BC ?"))
 
     assert graph.texts == ["Tontu bi : 5 cm"]
+
+
+# --- Mode audio (par défaut) : l'élève ne reçoit que des notes vocales ----------------------
+
+AUDIO = BotSettings(grouping_window_seconds=0)  # reply_mode="audio" par défaut
+
+
+class _BrokenTTS(RecordingTTS):
+    def synthesize(self, text: str, *, language: str = "wo") -> bytes:
+        raise ProviderError("Kiriku : erreur 503.")
+
+
+async def test_audio_mode_answers_only_with_voice_notes(pipeline: XamXamPipeline) -> None:
+    graph = FakeGraph(media={"img-1": (JPEG, "image/jpeg")})
+    tts = RecordingTTS()
+    agent = ScriptedAgentModel(
+        [
+            say("Maa ngi fi ! Yónnee ma sa exercice."),
+            call(SOLVE, question=""),
+            # Même si le modèle tente d'écrire, le texte est dit à voix haute.
+            calls((SEND_AUDIO, {"texte_wolof": SPOKEN}), (SEND_TEXT, {"texte": "Dégg nga ?"})),
+        ]
+    )
+    bot = build_bot(
+        graph,
+        ScriptedLLM([make_solution()]),
+        pipeline=pipeline,
+        tts=tts,
+        agent=agent,
+        settings=AUDIO,
+    )
+
+    await _deliver(bot, text_message("Salaam aleekum", "w1"))
+    await _deliver(bot, image_message("w2"))
+
+    assert bot.audio_only
+    assert set(graph.kinds) == {"audio"} and graph.texts == []
+    # Accusé de réception de la photo compris : tout part en note vocale.
+    # (le texte lu est passé par Xam-Xam, d'où une ponctuation normalisée)
+    assert tts.texts[0].startswith("Maa ngi fi")
+    assert tts.texts[1].startswith("Jërëjëf") and tts.texts[-1].startswith("Dégg nga")
+    assert agent.tools[0] == [SOLVE, SEND_AUDIO, CREATE_VIDEO]  # ni texte ni boutons
+    assert "Tu réponds uniquement par notes vocales" in agent.systems[0]
+
+
+async def test_audio_mode_escalates_to_video_after_a_reformulation(
+    pipeline: XamXamPipeline,
+) -> None:
+    graph = FakeGraph()
+    timalens = FakeTimaLens()
+    agent = ScriptedAgentModel(
+        [
+            call(SOLVE, question="AB = 4, AC = 6, BC ?"),
+            call(SEND_AUDIO, texte_wolof=SPOKEN),
+            say(""),
+            call(SEND_AUDIO, texte_wolof="Nanu ko waxaat ci beneen anam."),
+            say(""),
+            calls(
+                (SEND_AUDIO, {"texte_wolof": "Xaaral ma tuuti, maa ngi la defar ab vidéo."}),
+                (CREATE_VIDEO, {"texte_wolof": SPOKEN, "titre": "Pythagore"}),
+            ),
+        ]
+    )
+    bot = build_bot(
+        graph,
+        ScriptedLLM([make_solution()]),
+        pipeline=pipeline,
+        agent=agent,
+        settings=AUDIO,
+        video=timalens.client(),
+    )
+
+    await _deliver(bot, text_message("AB = 4, AC = 6, BC ?", "w1"))
+    await _deliver(bot, text_message("dégguma", "w2"))
+    await _deliver(bot, text_message("dégguma rekk", "w3"))
+
+    # L'état indique combien de notes vocales l'élève a déjà reçues pour cet exercice.
+    assert "Notes vocales envoyées pour l'exercice en cours : 1." in agent.systems[3]
+    assert "Notes vocales envoyées pour l'exercice en cours : 2." in agent.systems[5]
+    assert graph.kinds == ["audio", "audio", "audio", "video"]
+
+
+async def test_audio_mode_falls_back_to_text_when_synthesis_fails(
+    pipeline: XamXamPipeline,
+) -> None:
+    graph = FakeGraph(media={"img-1": (JPEG, "image/jpeg")})
+    agent = ScriptedAgentModel([call(SEND_AUDIO, texte_wolof="Tontu bi : 5 cm")])
+    bot = build_bot(
+        graph,
+        ScriptedLLM([]),
+        pipeline=pipeline,
+        tts=_BrokenTTS(),
+        agent=agent,
+        settings=AUDIO,
+    )
+
+    await _deliver(bot, image_message())
+
+    # L'élève reçoit quand même l'accusé et la réponse, en texte.
+    assert graph.texts == [MESSAGES.ack, "Tontu bi : 5 cm"]
+    assert tool_results(agent, 1) == [{"statut": "envoye_en_texte"}]
+
+
+async def test_audio_mode_needs_kiriku(pipeline: XamXamPipeline) -> None:
+    graph = FakeGraph()
+    agent = ScriptedAgentModel([say("Bindal sa laaj.")])
+    bot = build_bot(
+        graph, ScriptedLLM([]), pipeline=pipeline, voice=False, agent=agent, settings=AUDIO
+    )
+
+    await _deliver(bot, text_message("salut"))
+
+    assert not bot.audio_only  # sans Kiriku, retour automatique au texte
+    assert graph.texts == ["Bindal sa laaj."]
+    assert SEND_TEXT in agent.tools[0]
+
+
+# --- Autocollant d'attente « Néggal tuuti » -------------------------------------------------
+
+STICKER = b"RIFF\x00\x00\x00\x00WEBPVP8X autocollant"
+
+
+async def test_waiting_sticker_is_sent_for_every_message_and_uploaded_once(
+    pipeline: XamXamPipeline,
+) -> None:
+    graph = FakeGraph(media={"img-1": (JPEG, "image/jpeg")})
+    agent = ScriptedAgentModel([say("un"), say("deux")])
+    bot = build_bot(graph, ScriptedLLM([]), pipeline=pipeline, agent=agent, waiting_sticker=STICKER)
+
+    await _deliver(bot, text_message("salut", "w1"))
+    await _deliver(bot, image_message("w2"))
+
+    # L'autocollant part avant chaque réponse et remplace l'accusé de réception.
+    assert graph.kinds == ["sticker", "text", "sticker", "text"]
+    assert graph.texts == ["un", "deux"]
+    assert [m["sticker"]["id"] for m in graph.sent if m["type"] == "sticker"] == [
+        "upload-1",
+        "upload-1",
+    ]
+    assert [STICKER in upload for upload in graph.uploads] == [True]  # téléversé une fois
+
+
+async def test_expired_sticker_is_uploaded_again_or_replaced_by_the_ack(
+    pipeline: XamXamPipeline,
+) -> None:
+    graph = FakeGraph(media={"img-1": (JPEG, "image/jpeg")}, rejected_media={"upload-1"})
+    bot = build_bot(
+        graph,
+        ScriptedLLM([]),
+        pipeline=pipeline,
+        agent=ScriptedAgentModel([say("ok")]),
+        waiting_sticker=STICKER,
+    )
+    await _deliver(bot, text_message("salut"))
+    # Premier identifiant refusé (expiré) : nouveau téléversement, puis envoi réussi.
+    assert graph.kinds == ["sticker", "text"]
+    assert graph.sent[0]["sticker"]["id"] == "upload-2"
+
+    graph = FakeGraph(
+        media={"img-1": (JPEG, "image/jpeg")}, rejected_media={"upload-1", "upload-2"}
+    )
+    bot = build_bot(
+        graph,
+        ScriptedLLM([]),
+        pipeline=pipeline,
+        agent=ScriptedAgentModel([say("ok")]),
+        waiting_sticker=STICKER,
+    )
+    await _deliver(bot, image_message())
+    # Autocollant impossible : l'accusé de réception habituel le remplace.
+    assert graph.texts == [MESSAGES.ack, "ok"]
+
+
+def test_packaged_waiting_sticker_follows_whatsapp_rules() -> None:
+    from xamxam.whatsapp.factory import WAITING_STICKER_PATH
+
+    data = WAITING_STICKER_PATH.read_bytes()
+    assert data[:4] == b"RIFF" and data[8:12] == b"WEBP"
+    assert b"ANIM" in data[:64]  # autocollant animé : 500 Ko au plus
+    assert len(data) <= 500 * 1024
+    # Canevas VP8X : largeur et hauteur moins un, sur 24 bits.
+    width = int.from_bytes(data[24:27], "little") + 1
+    height = int.from_bytes(data[27:30], "little") + 1
+    assert (width, height) == (512, 512)

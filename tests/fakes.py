@@ -32,6 +32,8 @@ class FakeGraph:
     uploads: list[bytes] = field(default_factory=list)
     read_receipts: list[str] = field(default_factory=list)
     fail_downloads: bool = False
+    # Identifiants de média refusés à l'envoi (média expiré chez Meta, par exemple).
+    rejected_media: set[str] = field(default_factory=set)
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path
@@ -59,6 +61,9 @@ class FakeGraph:
             if body.get("status") == "read":  # coche bleue + « en train d'écrire »
                 self.read_receipts.append(body["message_id"])
                 return httpx.Response(200, json={"success": True})
+            media = body.get(body.get("type", ""), {})
+            if isinstance(media, dict) and media.get("id") in self.rejected_media:
+                return httpx.Response(400, json={"error": {"message": "Media not found"}})
             self.sent.append(body)
             return httpx.Response(200, json={"messages": [{"id": "wamid.out"}]})
         return httpx.Response(404)
@@ -151,6 +156,7 @@ def build_bot(
     tts: Any = None,
     voice: bool = True,
     video: Any = None,
+    waiting_sticker: bytes | None = None,
     settings: BotSettings | None = None,
     limiter: RateLimiter | None = None,
     unlimited: frozenset[str] = frozenset(),
@@ -166,11 +172,13 @@ def build_bot(
         pipeline=pipeline,
         kiriku_limiter=limiter or RateLimiter(30),
         hasher=IdHasher("cle-de-test"),
-        settings=settings or BotSettings(grouping_window_seconds=0),
+        # Mode texte par défaut dans les tests ; le mode audio a ses propres tests.
+        settings=settings or BotSettings(grouping_window_seconds=0, reply_mode="texte"),
         messages=BotMessages(),
         unlimited_numbers=unlimited,
         state_path=state_path,
         video=video,
+        waiting_sticker=waiting_sticker,
     )
 
 

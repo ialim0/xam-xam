@@ -73,12 +73,13 @@ Il faut deux comptes gratuits : une **clé Gemini** ([Google AI Studio](https://
 
 ### Comment l'agent répond
 
-À chaque message, l'agent choisit lui-même parmi cinq outils : répondre en texte, résoudre l'exercice (lecture de la photo, vérification SymPy), envoyer une note vocale, proposer des boutons (« 🔊 Écouter », « 🎬 Vidéo », « ✅ Compris ») et lancer une vidéo.
+Dès qu'un message arrive, l'élève reçoit l'autocollant animé « Néggal tuuti » (patiente un peu) pendant le traitement (`XAMXAM_WAITING_STICKER=false` pour le retirer). Par défaut, l'élève ne reçoit **que des notes vocales en wolof** : salutations, explications, accusés de réception et messages d'erreur. Le texte ne sert qu'en secours, si la synthèse Kiriku échoue. Sans Kiriku, ou avec `XAMXAM_REPLY_MODE=texte`, le bot répond par écrit et propose des boutons (« 🔊 Écouter », « 🎬 Vidéo », « ✅ Compris »).
 
-- Une salutation ou une question de cours reçoit une réponse courte en texte.
-- Un exercice reçoit une explication courte, la réponse vérifiée et des boutons.
-- Si l'élève ne comprend pas (« dégguma »), l'agent reformule en note vocale ; s'il ne comprend toujours pas, il le prévient par audio et lance seul la vidéo.
-- Une note vocale reçoit aussi une réponse vocale.
+À chaque message, l'agent choisit lui-même ses outils : résoudre l'exercice (lecture de la photo, vérification SymPy), envoyer une note vocale, lancer une vidéo, et en mode texte écrire ou proposer des boutons.
+
+- Une salutation ou une question de cours reçoit une réponse courte.
+- Un exercice reçoit une explication (données, étapes, réponse vérifiée), puis « Dégg nga ? ».
+- Si l'élève ne comprend pas (« dégguma »), l'agent reformule autrement, avec un exemple concret ; s'il ne comprend toujours pas, il le prévient et lance seul la vidéo.
 
 Garde-fous en code : un résultat chiffré ne peut venir que de l'outil de résolution vérifié ; au plus 6 étapes par message ; une vidéo à la fois et 5 par jour par élève (`XAMXAM_VIDEOS_PER_DAY`). La conversation est gardée **1 h en mémoire vive** (`XAMXAM_MEMORY_MINUTES`) : rien n'est écrit sur disque, et ni les photos ni les audios des élèves ne sont conservés.
 
