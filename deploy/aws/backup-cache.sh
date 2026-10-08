@@ -10,6 +10,7 @@ cache="${XAMXAM_CACHE_PATH:-/cache}"
 aws s3 sync "$cache/" "s3://$XAMXAM_BACKUP_BUCKET/cache/" \
 	--region "$AWS_REGION" \
 	--exclude "*.tmp" \
+	--exclude "bot-state.sqlite3*" \
 	--no-follow-symlinks \
 	--only-show-errors
 echo "backup-cache : synchronisation terminée."

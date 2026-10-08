@@ -145,7 +145,7 @@ deploy/aws/deploy.sh
 2. envoie dans le bucket le paquet de déploiement (Compose, Caddyfile, scripts, unités systemd) ;
 3. lance sur l'instance, via SSM Run Command, `install.sh` qui installe les fichiers, active
    les services et le timer de sauvegarde, recharge les secrets, puis `docker compose pull`
-   et `up` ; le déploiement échoue si le bot n'est pas en bonne santé (`/health`).
+   et `up` ; le déploiement échoue si le bot n'est pas prêt (`/ready`).
 
 Les déploiements suivants se font de la même façon. Après la modification d'un paramètre SSM,
 un nouveau `deploy.sh`, ou dans une session :
@@ -164,6 +164,7 @@ Console Meta → votre application → **WhatsApp → Configuration → Webhook*
 ```bash
 curl -s https://bot.example.org/health
 # {"status":"ok","tts":"kvicc","bot_ready":true,"missing_variables":[]}
+curl -fsS https://bot.example.org/ready
 ```
 
 Envoyez ensuite une photo d'exercice au numéro WhatsApp : accusé de réception immédiat, puis
@@ -212,10 +213,13 @@ Utilisez par exemple `BEDROCK_REGION=eu-west-1` (Irlande) et l'ARN correspondant
 `xamxam-backup.timer` lance chaque jour vers 3 h (heure de l'instance, UTC) un
 `aws s3 sync /cache → s3://<bucket>/cache/`. Rien n'est supprimé du bucket, et le
 versionnage conserve les anciennes versions pendant 30 jours (`backup_retention_days`).
+Le fichier SQLite `bot-state.sqlite3` est exclu de la sauvegarde : il reste sur le volume EBS,
+mais copier une base ouverte pourrait produire une sauvegarde incohérente. Sa perte réinitialise
+les limites et la déduplication, sans perdre les audios du cache.
 
 Sauvegarde immédiate : `sudo systemctl start xamxam-backup.service`.
 
-**Restauration complète** (volume vide ou recréé), dans une session :
+**Restauration du cache audio** (volume vide ou recréé), dans une session :
 
 ```bash
 sudo /opt/xamxam/restore-cache.sh

@@ -10,8 +10,8 @@ from xamxam.eval.dataset import DatasetError, load_sentences
 from xamxam.eval.metrics import LAYERS, Source
 from xamxam.eval.records import Condition, OutputPaths
 from xamxam.eval.report import build_report
-from xamxam.eval.run import run_evaluation
-from xamxam.lexicon import VALIDATED_AND_DRAFT
+from xamxam.eval.run import build_target, run_evaluation
+from xamxam.lexicon import VALIDATED_AND_DRAFT, VALIDATED_ONLY, LexiconIndex
 from xamxam.pipeline import XamXamPipeline
 from xamxam.providers import MockSTTProvider, MockTTSProvider
 
@@ -26,6 +26,14 @@ def test_example_dataset_is_valid() -> None:
     assert len(sentences) == 5
     assert {s.notion for s in sentences} == {"pythagore", "thales", "concret"}
     assert all(s.target_terms for s in sentences)
+
+
+def test_draft_pronunciation_is_not_counted_as_validated(pipeline: XamXamPipeline) -> None:
+    index = LexiconIndex(pipeline.index.lexicon)
+    validated = build_target("hypoténuse", index, VALIDATED_ONLY)
+    experimental = build_target("hypoténuse", index, VALIDATED_AND_DRAFT)
+    assert "ipoteniws" not in validated.accepted_forms
+    assert "ipoteniws" in experimental.accepted_forms
 
 
 @pytest.mark.parametrize(
@@ -107,6 +115,54 @@ def test_run_and_report_end_to_end(tmp_path: Path, caplog: pytest.LogCaptureFixt
 
 def test_report_without_run_fails_cleanly(tmp_path: Path) -> None:
     assert main(["report", "--output-dir", str(tmp_path)]) == 1
+
+
+def test_blind_human_rating_round_trip(tmp_path: Path) -> None:
+    out = tmp_path / "outputs"
+    args = ["--output-dir", str(out)]
+    assert (
+        main(
+            [
+                "run",
+                "--sentences",
+                str(SENTENCES_PATH),
+                "--lexicon",
+                str(LEXICON_PATH),
+                "--provider",
+                "mock",
+                "--no-cache",
+                *args,
+            ]
+        )
+        == 0
+    )
+    assert main(["blind", "--seed", "7", *args]) == 0
+    paths = OutputPaths(out)
+    rows = _read_csv(paths.blind_csv)
+    assert len(rows) == 15
+    assert "condition" not in rows[0] and "texte_envoye" not in rows[0]
+    assert len({row["fichier_audio"] for row in rows}) == 15
+    assert all((paths.blind_dir / row["fichier_audio"]).is_file() for row in rows)
+    assert main(["blind", *args]) == 1  # ne jamais effacer des notes par inadvertance
+
+    rows[0]["note_correction_wolof"] = "4"
+    rows[0]["note_prononciation_termes"] = "5"
+    with paths.blind_csv.open("w", encoding="utf-8", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=rows[0].keys())
+        writer.writeheader()
+        writer.writerows(rows)
+    sample_audio = paths.blind_dir / rows[0]["fichier_audio"]
+    original_audio = sample_audio.read_bytes()
+    sample_audio.write_bytes(b"modified audio")
+    assert main(["unblind", *args]) == 1
+    sample_audio.write_bytes(original_audio)
+    assert main(["unblind", *args]) == 0
+    assert main(["report", *args]) == 0
+    assert len(_read_csv(paths.human_csv)) == 15
+    assert "Lignes annotées par des évaluateurs humains : 1" in paths.summary_md.read_text(
+        encoding="utf-8"
+    )
+    assert main(["unblind", *args]) == 1  # protège les notes déjà importées
 
 
 def test_kvicc_provider_without_keys_fails_cleanly(tmp_path: Path) -> None:

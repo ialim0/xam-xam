@@ -1,4 +1,7 @@
+import hashlib
+import sqlite3
 import threading
+from pathlib import Path
 
 import pytest
 
@@ -60,3 +63,47 @@ def test_deduplicator() -> None:
     dedup.is_duplicate("b")
     dedup.is_duplicate("c")  # « a » sort de la mémoire
     assert not dedup.is_duplicate("a")
+
+
+def test_rate_limit_survives_restart_without_storing_phone_number(tmp_path: Path) -> None:
+    clock = FakeClock()
+    path = tmp_path / "bot.sqlite3"
+    first = UserRateLimiter(1, clock=clock, store_path=path)
+    assert first.allow("221771234567", "hashed-user")
+    first.close()
+
+    second = UserRateLimiter(1, clock=clock, store_path=path)
+    assert not second.allow("221771234567", "hashed-user")
+    assert second.allow("221771234568", "other-hash")
+    clock.now = 3601
+    assert second.allow("221771234567", "hashed-user")
+    second.close()
+    assert b"221771234567" not in path.read_bytes()
+
+
+def test_completed_message_ids_survive_restart_without_raw_ids(tmp_path: Path) -> None:
+    path = tmp_path / "bot.sqlite3"
+
+    def hasher(value: str) -> str:
+        return hashlib.sha256(value.encode()).hexdigest()
+
+    first = MessageDeduplicator(store_path=path, hasher=hasher)
+    assert not first.is_duplicate("wamid.done")
+    first.mark_done(["wamid.done"])
+    assert not first.is_duplicate("wamid.pending")
+    first.close()
+
+    second = MessageDeduplicator(store_path=path, hasher=hasher)
+    assert second.is_duplicate("wamid.done")
+    assert not second.is_duplicate("wamid.pending")
+    second.forget(["wamid.pending"])
+    assert not second.is_duplicate("wamid.pending")
+    second.close()
+    with sqlite3.connect(path) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM completed").fetchone()[0] == 1
+    assert b"wamid.done" not in path.read_bytes()
+
+
+def test_persistent_deduplicator_requires_hashing(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="hachage"):
+        MessageDeduplicator(store_path=tmp_path / "bot.sqlite3")

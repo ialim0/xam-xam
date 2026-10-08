@@ -60,4 +60,5 @@ def build_bot(
         settings=bot_settings,
         messages=messages,
         unlimited_numbers=settings.unlimited_numbers,
+        state_path=(settings.state_dir or settings.cache_dir) / "bot-state.sqlite3",
     )

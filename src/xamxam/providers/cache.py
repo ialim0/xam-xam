@@ -9,7 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import os
+import secrets
 from pathlib import Path
 
 from xamxam.metrics import record_cache
@@ -50,9 +50,12 @@ class DiskCache:
         path = self.path(key)
         path.parent.mkdir(parents=True, exist_ok=True)
         # Écriture atomique : un arrêt brutal ne laisse jamais une entrée tronquée.
-        temporary = path.with_name(f"{path.name}.{os.getpid()}.tmp")
-        temporary.write_bytes(value)
-        temporary.replace(path)
+        temporary = path.with_name(f"{path.name}.{secrets.token_hex(8)}.tmp")
+        try:
+            temporary.write_bytes(value)
+            temporary.replace(path)
+        finally:
+            temporary.unlink(missing_ok=True)
 
 
 def fingerprint(*parts: str | bytes) -> str:

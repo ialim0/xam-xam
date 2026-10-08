@@ -69,10 +69,13 @@ class Settings:
     selfhosted_api_key: str | None = field(default=None, repr=False)
     # Le modèle explique en français simple, puis un traducteur produit le wolof.
     translate_from_french: bool = False
+    # Route de synthèse manuelle, réservée aux tests locaux et désactivée par défaut.
+    enable_dev_routes: bool = False
     log_hash_key: str | None = field(default=None, repr=False)
     # Numéros exemptés de la limite par utilisateur (équipe, démos), chiffres seuls.
     unlimited_numbers: frozenset[str] = field(default=frozenset(), repr=False)
     cache_dir: Path = DEFAULT_CACHE_DIR
+    state_dir: Path | None = None
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> Settings:
@@ -96,9 +99,11 @@ class Settings:
             selfhosted_model=_read(env, "SELFHOSTED_MODEL"),
             selfhosted_api_key=_read(env, "SELFHOSTED_API_KEY"),
             translate_from_french=_flag(_read(env, "TRANSLATE_FROM_FRENCH")),
+            enable_dev_routes=_flag(_read(env, "XAMXAM_ENABLE_DEV_ROUTES")),
             log_hash_key=_read(env, "LOG_HASH_KEY"),
             unlimited_numbers=_phone_numbers(_read(env, "UNLIMITED_NUMBERS")),
             cache_dir=Path(_read(env, "XAMXAM_CACHE_DIR") or DEFAULT_CACHE_DIR),
+            state_dir=Path(value) if (value := _read(env, "XAMXAM_STATE_DIR")) else None,
         )
 
     @property
@@ -126,6 +131,9 @@ class Settings:
             "WHATSAPP_VERIFY_TOKEN": self.whatsapp_verify_token,
             "WHATSAPP_APP_SECRET": self.whatsapp_app_secret,
             "LLM_PROVIDER": self.llm_provider,
+            "KVICC_TTS_URL": self.kvicc_tts_url,
+            "KVICC_STT_URL": self.kvicc_stt_url,
+            "KVICC_API_KEY": self.kvicc_api_key,
         }
         if self.llm_provider == "bedrock":
             required |= {

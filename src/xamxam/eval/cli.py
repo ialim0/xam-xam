@@ -15,6 +15,7 @@ from xamxam.config import (
     Settings,
 )
 from xamxam.errors import XamXamError
+from xamxam.eval.blind import create_blind_sheet, import_blind_sheet
 from xamxam.eval.dataset import DatasetError, load_sentences
 from xamxam.eval.human import write_human_template
 from xamxam.eval.records import OutputPaths, RunInfo
@@ -94,6 +95,17 @@ def build_parser() -> argparse.ArgumentParser:
 
     report = commands.add_parser("report", help="Calcule les métriques et écrit le rapport.")
     report.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
+
+    blind = commands.add_parser(
+        "blind", help="Prépare les audios et la fiche de notation à l'aveugle."
+    )
+    blind.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
+    blind.add_argument("--seed", type=int, default=None)
+    blind.add_argument("--overwrite-blind", action="store_true")
+
+    unblind = commands.add_parser("unblind", help="Réintègre les notes aveugles au rapport.")
+    unblind.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
+    unblind.add_argument("--overwrite-human", action="store_true")
 
     llm = commands.add_parser("llm", help="Compare des modèles de langage sur des photos.")
     llm.add_argument("--photos", type=Path, required=True, help="Dossier des photos d'exercices.")
@@ -228,6 +240,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             _llm(args)
         elif args.command == "check":
             return 0 if _check(args) else 1
+        elif args.command == "blind":
+            count = create_blind_sheet(
+                OutputPaths(args.output_dir), seed=args.seed, overwrite=args.overwrite_blind
+            )
+            logger.info("Fiche aveugle créée : %d audios.", count)
+        elif args.command == "unblind":
+            count = import_blind_sheet(
+                OutputPaths(args.output_dir), overwrite_human=args.overwrite_human
+            )
+            logger.info("Notes réintégrées : %d lignes annotées.", count)
         else:
             _report(args)
     except XamXamError as exc:

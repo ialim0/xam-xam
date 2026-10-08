@@ -17,6 +17,7 @@ trap 'docker compose start bot' EXIT
 
 aws s3 sync "s3://$XAMXAM_BACKUP_BUCKET/cache/" "$cache/" \
 	--region "$AWS_REGION" \
+	--exclude "bot-state.sqlite3*" \
 	--only-show-errors
 chown -R "$container_uid:$container_uid" "$cache"
 echo "restore-cache : cache restauré depuis s3://$XAMXAM_BACKUP_BUCKET/cache/."

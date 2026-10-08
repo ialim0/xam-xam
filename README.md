@@ -40,6 +40,8 @@ pytest                          # tous les tests passent sans aucune clé (provi
 python -m xamxam.lexicon        # valide le lexique et signale les caractères ignorés par le TTS
 python -m xamxam.eval check     # contrôle le jeu de 100 phrases du benchmark
 python -m xamxam.eval run       # audios des 3 conditions, aller-retour STT, fiche d'évaluation humaine
+python -m xamxam.eval blind     # fiche et audios anonymisés pour la notation humaine
+python -m xamxam.eval unblind   # réintègre les notes après évaluation
 python -m xamxam.eval report    # classement des termes et résumé Markdown
 ```
 
@@ -92,6 +94,9 @@ Copiez `.env.example` en `.env` et renseignez les clés dont vous disposez, puis
 - sans `TIMALENS_API_KEY`, la génération vidéo est désactivée et un message l'indique ;
 - sans les variables du bot (`WHATSAPP_*`, `LLM_PROVIDER` et celles du modèle), le webhook répond 503 et `/health`
   liste les variables manquantes.
+- le bot exige aussi `KVICC_TTS_URL`, `KVICC_STT_URL` et `KVICC_API_KEY` : il ne démarre pas
+  avec une voix ou une transcription factice. `GET /ready` renvoie 503 si le bot n'est pas prêt ;
+  `GET /health` reste disponible pour le diagnostic.
 
 Le client KVICC respecte les limites de l'API : il espace les requêtes (30 par minute et par clé,
 TTS et STT confondus), réessaie après un `429` ou un `503` en suivant `Retry-After`, et découpe par
@@ -103,7 +108,8 @@ soit environ 14 minutes.
 
 ### Bot WhatsApp
 
-L'élève envoie la photo d'un exercice, une note vocale en wolof, ou les deux. Il reçoit un
+L'élève envoie la photo d'un exercice, une note vocale en wolof, une question écrite, ou une
+combinaison de ces entrées. Il reçoit un
 accusé de réception immédiat, puis une **note vocale en wolof** qui explique la résolution
 étape par étape, et la réponse finale en texte.
 
@@ -119,6 +125,10 @@ WhatsApp ─► webhook (signature vérifiée, 200 immédiat)
   illimités pour l'équipe (`UNLIMITED_NUMBERS`).
 - Audios d'explication (TTS) en cache par empreinte ; les transcriptions ne sont pas mises en
   cache par le bot (le cache STT sert uniquement aux commandes d'évaluation).
+- Sur le volume persistant du déploiement AWS, les limites par élève et les identifiants des
+  messages terminés survivent aux redémarrages dans `/cache/bot-state.sqlite3`. Le chemin peut
+  être déplacé avec `XAMXAM_STATE_DIR`. Seuls des identifiants hachés et des horodatages y figurent ;
+  aucune question, photo, note vocale ou transcription n'y est écrite.
 - Uniquement des **modèles open source** (Apache 2.0) : Amazon Bedrock en déploiement principal,
   ou un serveur auto-hébergé (vLLM, Ollama). Liste blanche versionnée, comparaison des modèles
   avec `python -m xamxam.eval llm` : voir [docs/modeles.md](docs/modeles.md) et
@@ -135,8 +145,12 @@ WhatsApp ─► webhook (signature vérifiée, 200 immédiat)
   Xam-Xam après traitement : les médias sont supprimés à la fin de chaque demande et les
   transcriptions ne sont jamais écrites sur disque (un test le vérifie). Seuls les **audios
   d'explication générés** sont mis en cache (cache TTS, indexé par empreinte du texte).
-  Les journaux ne contiennent aucun contenu, seulement des identifiants hachés et des
-  métriques.
+  Les messages écrits ne sont pas conservés non plus. Les journaux ne contiennent aucun
+  contenu, seulement des identifiants hachés et des métriques.
+
+La vérification SymPy recalcule les valeurs que le modèle a extraites de l'énoncé. Elle contrôle
+le calcul, mais ne prouve pas que les nombres ont été correctement lus sur la photo : cela doit
+être mesuré séparément sur des photos réelles.
 
 Déploiement sur AWS (EC2, Docker Compose, HTTPS par Caddy) : [docs/deploiement-aws.md](docs/deploiement-aws.md).
 Alternative Cloud Run et test local avec ngrok : [docs/deploiement-gcp.md](docs/deploiement-gcp.md).
@@ -144,10 +158,13 @@ Alternative Cloud Run et test local avec ngrok : [docs/deploiement-gcp.md](docs/
 ### Serveur de développement
 
 ```bash
-uvicorn --factory xamxam.whatsapp.app:create_app --reload
+XAMXAM_ENABLE_DEV_ROUTES=true uvicorn --factory xamxam.whatsapp.app:create_app --reload
 curl -X POST localhost:8000/dev/speak -H 'Content-Type: application/json' \
      -d '{"text": "AB² = 9 cm²"}' -o test.wav
 ```
+
+`/dev/speak` est absent par défaut. Ne l'activez que sur un serveur local : cette route n'a pas
+d'authentification.
 
 ## Architecture
 

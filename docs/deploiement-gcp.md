@@ -28,7 +28,8 @@ Variables à définir (voir `.env.example`) :
 | `LOG_HASH_KEY` | clé HMAC des identifiants dans les logs (`openssl rand -hex 32`) |
 | `UNLIMITED_NUMBERS` | numéros sans limite (équipe, démos), séparés par des virgules |
 
-`GET /health` indique si le bot est prêt et liste les variables manquantes (noms seulement).
+`GET /health` liste les variables manquantes (noms seulement) ; `GET /ready` renvoie 503 tant
+que le bot n'est pas prêt.
 
 ## 1. En local avec ngrok
 
@@ -59,10 +60,11 @@ d'explication est dans `.cache/tts`.
 
 | Option | Raison |
 | --- | --- |
-| `--max-instances=1` | la file d'attente Kiriku (30 requêtes/min, TTS + STT) et les limites par élève sont en mémoire : une seule instance garantit un quota vraiment global |
+| `--max-instances=1` | la file d'attente Kiriku (30 requêtes/min, TTS + STT) est en mémoire : une seule instance garantit un quota vraiment global |
 | `--min-instances=1` | pas de démarrage à froid, et la file en mémoire n'est pas perdue quand le trafic s'arrête |
 | `--no-cpu-throttling` | le webhook répond 200 tout de suite et traite en tâche de fond : sans CPU alloué en permanence, ce traitement serait ralenti après la réponse |
 | volume Cloud Storage sur `/cache` | le cache des audios d'explication survit aux redémarrages et aux redéploiements |
+| `XAMXAM_STATE_DIR=/tmp/xamxam-state` | garde SQLite sur un disque local au conteneur ; les limites et la déduplication sont réinitialisées si l'instance disparaît |
 
 ### Commandes
 
@@ -102,7 +104,7 @@ gcloud run deploy $SERVICE \
     --no-cpu-throttling \
     --add-volume name=cache,type=cloud-storage,bucket=$BUCKET \
     --add-volume-mount volume=cache,mount-path=/cache \
-    --set-env-vars XAMXAM_CACHE_DIR=/cache,LLM_PROVIDER=selfhosted,SELFHOSTED_BASE_URL=<url>,SELFHOSTED_MODEL=<modele>,WHATSAPP_PHONE_NUMBER_ID=<id>,KVICC_TTS_URL=<url-tts>,KVICC_STT_URL=<url-stt> \
+    --set-env-vars XAMXAM_CACHE_DIR=/cache,XAMXAM_STATE_DIR=/tmp/xamxam-state,LLM_PROVIDER=selfhosted,SELFHOSTED_BASE_URL=<url>,SELFHOSTED_MODEL=<modele>,WHATSAPP_PHONE_NUMBER_ID=<id>,KVICC_TTS_URL=<url-tts>,KVICC_STT_URL=<url-stt> \
     --set-secrets WHATSAPP_TOKEN=WHATSAPP_TOKEN:latest,WHATSAPP_VERIFY_TOKEN=WHATSAPP_VERIFY_TOKEN:latest,WHATSAPP_APP_SECRET=WHATSAPP_APP_SECRET:latest,SELFHOSTED_API_KEY=SELFHOSTED_API_KEY:latest,KVICC_API_KEY=KVICC_API_KEY:latest,LOG_HASH_KEY=LOG_HASH_KEY:latest,UNLIMITED_NUMBERS=UNLIMITED_NUMBERS:latest
 ```
 
@@ -110,7 +112,7 @@ gcloud run deploy $SERVICE \
 La sécurité repose sur la signature `X-Hub-Signature-256`, vérifiée à chaque notification.
 
 Remplacez ensuite l'URL ngrok par `https://<service>-<hash>.<region>.run.app/webhook` dans la
-console Meta. Vérifiez : `curl https://<url>/health` doit renvoyer `"bot_ready": true`.
+console Meta. Vérifiez : `curl https://<url>/ready` doit renvoyer `"bot_ready": true`.
 
 ### Coût estimé
 

@@ -53,21 +53,35 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-        yield
-        if bot is not None:
-            await bot.drain()
+        try:
+            yield
+        finally:
+            if bot is not None:
+                await bot.drain()
+                await bot.aclose()
 
     app = FastAPI(title="Xam-Xam", summary="Narration scientifique en wolof", lifespan=lifespan)
 
-    @app.get("/health")
-    def health() -> dict[str, Any]:
+    def health_payload() -> dict[str, Any]:
         return {
-            "status": "ok",
+            "status": "ok" if bot is not None else "degraded",
             "tts": tts.name,
             "bot_ready": bot is not None,
             "llm": bot.llm_info if bot is not None else None,
             "missing_variables": missing,
         }
+
+    @app.get("/health")
+    def health() -> dict[str, Any]:
+        """Diagnostic accessible même quand la configuration du bot est incomplète."""
+        return health_payload()
+
+    @app.get("/ready")
+    def ready() -> dict[str, Any]:
+        """Échec HTTP si le webhook ne peut pas traiter les demandes."""
+        if bot is None:
+            raise HTTPException(status_code=503, detail=health_payload())
+        return health_payload()
 
     @app.get("/webhook", response_class=PlainTextResponse)
     def verify_webhook(
@@ -99,14 +113,17 @@ def create_app(
             await bot.receive(message)
         return {"status": "received"}
 
-    @app.post("/dev/speak", response_class=Response)
-    def speak(body: SpeakRequest) -> Response:
-        """Outil de développement : texte → audio, après passage par Xam-Xam."""
-        prepared = pipeline.prepare(body.text)
-        try:
-            audio = tts.synthesize(prepared.text)
-        except ProviderError as exc:
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
-        return Response(content=audio, media_type="audio/wav")
+    if settings.enable_dev_routes:
+        logger.warning("Routes de développement activées : ne pas exposer ce serveur publiquement.")
+
+        @app.post("/dev/speak", response_class=Response)
+        def speak(body: SpeakRequest) -> Response:
+            """Outil local : texte → audio, après passage par Xam-Xam."""
+            prepared = pipeline.prepare(body.text)
+            try:
+                audio = tts.synthesize(prepared.text)
+            except ProviderError as exc:
+                raise HTTPException(status_code=502, detail=str(exc)) from exc
+            return Response(content=audio, media_type="audio/wav")
 
     return app

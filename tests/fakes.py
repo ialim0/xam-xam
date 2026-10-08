@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -136,6 +137,7 @@ def build_bot(
     settings: BotSettings | None = None,
     limiter: RateLimiter | None = None,
     unlimited: frozenset[str] = frozenset(),
+    state_path: Path | None = None,
 ) -> XamXamBot:
     return XamXamBot(
         meta=graph.client(),
@@ -148,6 +150,7 @@ def build_bot(
         settings=settings or BotSettings(grouping_window_seconds=0),
         messages=BotMessages(),
         unlimited_numbers=unlimited,
+        state_path=state_path,
     )
 
 

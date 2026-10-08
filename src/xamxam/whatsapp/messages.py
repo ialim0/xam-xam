@@ -31,10 +31,11 @@ class BotMessages:
         "Baal ma, mënuma wóoral tontu bi léegi. Jéemaatal ci kanam, walla laajal sa jàngalekat."
     )
     audio_too_long: str = "Sa kàddu gi dafa gudd lool. Yónnee ma kàddu gu gàttee ñaari simili."
+    text_too_long: str = "Votre message est trop long. Envoyez une question plus courte."
     rate_limited: str = "Laaj nga lu bari ci waxtu wii. Jéemaatal ci kanam, ba beneen yoon."
     help: str = (
         "Asalaa maalekum ! Yónnee ma nataalu exercice bi, walla kàddu (note vocale), "
-        "ma leral la ko."
+        "ma leral la ko. Vous pouvez aussi écrire votre question de maths."
     )
     error: str = "Am na jafe-jafe. Baal ma, jéemaatal ci kanam."
     final_answer: str = "Tontu bi : {answer}"

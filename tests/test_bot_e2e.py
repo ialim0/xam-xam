@@ -213,6 +213,29 @@ async def test_text_only_gets_help(pipeline: XamXamPipeline) -> None:
     assert llm.calls == []
 
 
+async def test_written_math_question_is_answered(pipeline: XamXamPipeline) -> None:
+    graph = FakeGraph()
+    llm = ScriptedLLM([make_solution()])
+    bot = build_bot(graph, llm, pipeline=pipeline)
+
+    await _deliver(bot, text_message("AB mesure 4 cm, AC mesure 6 cm. Calcule BC."))
+
+    _assert_explanation_sent(graph)
+    assert llm.calls[0].text == "AB mesure 4 cm, AC mesure 6 cm. Calcule BC."
+    assert llm.calls[0].image is None and llm.calls[0].transcript is None
+
+
+async def test_written_question_is_bounded(pipeline: XamXamPipeline) -> None:
+    graph = FakeGraph()
+    llm = ScriptedLLM([])
+    bot = build_bot(graph, llm, pipeline=pipeline)
+
+    await _deliver(bot, text_message("a" * 2001))
+
+    assert graph.texts == [MESSAGES.ack, MESSAGES.text_too_long]
+    assert llm.calls == []
+
+
 async def test_duplicate_notifications_are_processed_once(pipeline: XamXamPipeline) -> None:
     graph = FakeGraph(media={"img-1": (JPEG, "image/jpeg")})
     llm = ScriptedLLM([make_solution()])
@@ -222,6 +245,30 @@ async def test_duplicate_notifications_are_processed_once(pipeline: XamXamPipeli
     await _deliver(bot, image_message())  # même identifiant de message
 
     assert len(llm.calls) == 1
+
+
+async def test_completed_notification_is_not_replayed_after_restart(
+    pipeline: XamXamPipeline, tmp_path: Path
+) -> None:
+    state_path = tmp_path / "bot-state.sqlite3"
+    first_graph = FakeGraph(media={"img-1": (JPEG, "image/jpeg")})
+    first = build_bot(
+        first_graph,
+        ScriptedLLM([make_solution()]),
+        pipeline=pipeline,
+        state_path=state_path,
+    )
+    await _deliver(first, image_message())
+    await first.aclose()
+
+    second_graph = FakeGraph(media={"img-1": (JPEG, "image/jpeg")})
+    second_llm = ScriptedLLM([])
+    second = build_bot(second_graph, second_llm, pipeline=pipeline, state_path=state_path)
+    await _deliver(second, image_message())
+    await second.aclose()
+
+    assert len(first_graph.uploads) == 1
+    assert second_graph.sent == [] and second_llm.calls == []
 
 
 async def test_user_limit_and_unlimited_numbers(pipeline: XamXamPipeline) -> None:

@@ -75,14 +75,18 @@ def test_webhook_without_configuration(pipeline: XamXamPipeline) -> None:
     assert client.post("/webhook", json={}).status_code == 503
     assert client.get("/webhook", params={"hub.mode": "subscribe"}).status_code == 403
     health = client.get("/health").json()
+    assert health["status"] == "degraded"
     assert health["bot_ready"] is False
     assert "LLM_PROVIDER" in health["missing_variables"]
     assert health["llm"] is None
     assert "LOG_HASH_KEY" not in health["missing_variables"]
+    assert {"KVICC_TTS_URL", "KVICC_STT_URL", "KVICC_API_KEY"} <= set(health["missing_variables"])
+    assert client.get("/ready").status_code == 503
 
 
 def test_health_reports_active_llm(client: TestClient) -> None:
     assert client.get("/health").json()["llm"] == {"provider": "mock", "model": "scripted"}
+    assert client.get("/ready").json()["status"] == "ok"
 
 
 BOT_SETTINGS = {
@@ -90,6 +94,9 @@ BOT_SETTINGS = {
     "whatsapp_phone_number_id": "1",
     "whatsapp_verify_token": "v",
     "whatsapp_app_secret": "s",
+    "kvicc_tts_url": "https://kiriku.test/v1/audio/speech",
+    "kvicc_stt_url": "https://kiriku.test/v1/audio/transcriptions",
+    "kvicc_api_key": "test-key",
 }
 
 

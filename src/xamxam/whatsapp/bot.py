@@ -16,6 +16,7 @@ import asyncio
 import json
 import logging
 import math
+import time
 from collections.abc import Coroutine, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -42,6 +43,10 @@ logger = logging.getLogger(__name__)
 _AUDIO_EXTENSIONS = {"audio/ogg": ".ogg", "audio/mpeg": ".mp3", "audio/mp4": ".m4a"}
 # Le texte normalisé est plus long que l'explication (nombres écrits en lettres).
 _NORMALIZATION_GROWTH = 1.3
+_HELP_REQUESTS = frozenset(
+    {"aide", "help", "menu", "bonjour", "salut", "salaam aleekum", "asalaa maalekum"}
+)
+_MAX_TEXT_CHARS = 2000
 
 
 class _RejectedError(Exception):
@@ -85,6 +90,7 @@ class XamXamBot:
         messages: BotMessages | None = None,
         unlimited_numbers: frozenset[str] = frozenset(),
         translator: Translator | None = None,
+        state_path: Path | None = None,
     ) -> None:
         self._meta = meta
         # Mode traduction : le modèle explique en français, le traducteur produit le wolof.
@@ -98,9 +104,12 @@ class XamXamBot:
         self._settings = settings or BotSettings()
         self._messages = messages or BotMessages()
         self._user_limits = UserRateLimiter(
-            self._settings.user_requests_per_hour, unlimited_numbers=unlimited_numbers
+            self._settings.user_requests_per_hour,
+            unlimited_numbers=unlimited_numbers,
+            clock=time.time if state_path is not None else time.monotonic,
+            store_path=state_path,
         )
-        self._deduplicator = MessageDeduplicator()
+        self._deduplicator = MessageDeduplicator(store_path=state_path, hasher=hasher)
         self._bursts: dict[str, _Burst] = {}
         self._tasks: set[asyncio.Task[None]] = set()
 
@@ -133,29 +142,46 @@ class XamXamBot:
         while self._tasks:
             await asyncio.gather(*list(self._tasks), return_exceptions=True)
 
+    async def aclose(self) -> None:
+        """Ferme le client HTTP après la fin des traitements."""
+        try:
+            await self._meta.aclose()
+        finally:
+            self._user_limits.close()
+            self._deduplicator.close()
+
     async def _handle_burst(self, sender: str, burst: _Burst) -> None:
         user = self._hasher(sender)
+        completed = False
         try:
             if not self._user_limits.allow(sender, user):
                 logger.info("job %s", json.dumps({"user": user, "outcome": "limite_atteinte"}))
-                await self._reply(sender, self._messages.rate_limited)
+                completed = await self._reply(sender, self._messages.rate_limited)
                 return
             # L'accusé part dès le premier message, avant la fenêtre de regroupement.
             await self._reply(sender, self._messages.ack)
             await asyncio.sleep(self._settings.grouping_window_seconds)
+            self._bursts.pop(sender, None)
+            completed = await self._process(sender, user, burst.messages)
         finally:
             self._bursts.pop(sender, None)
-        await self._process(sender, user, burst.messages)
+            ids = [message.message_id for message in burst.messages]
+            if completed:
+                self._deduplicator.mark_done(ids)
+            else:
+                self._deduplicator.forget(ids)
 
-    async def _reply(self, sender: str, text: str) -> None:
+    async def _reply(self, sender: str, text: str) -> bool:
         try:
             await self._meta.send_text(sender, text)
+            return True
         except XamXamError as exc:
             logger.warning("Envoi d'un message impossible (%s).", type(exc).__name__)
+            return False
 
     # --- Traitement ----------------------------------------------------------------
 
-    async def _process(self, sender: str, user: str, messages: Sequence[IncomingMessage]) -> None:
+    async def _process(self, sender: str, user: str, messages: Sequence[IncomingMessage]) -> bool:
         metrics = JobMetrics(user=user)
         metrics.inputs.update(m.kind.value for m in messages)
         with tracking(metrics):
@@ -163,13 +189,15 @@ class XamXamBot:
                 with timed("total"):
                     await self._solve_and_answer(sender, messages, metrics)
                 metrics.outcome = "explication_envoyee"
+                return True
             except _RejectedError as rejection:
                 metrics.outcome = rejection.outcome
-                await self._reply(sender, rejection.reply)
+                return await self._reply(sender, rejection.reply)
             except Exception as exc:  # une tâche de fond ne doit jamais échouer en silence
                 metrics.outcome = "erreur"
                 metrics.error = type(exc).__name__
                 await self._reply(sender, self._messages.error)
+                return False
             finally:
                 logger.info("job %s", json.dumps(metrics.as_dict()))
 
@@ -178,9 +206,18 @@ class XamXamBot:
     ) -> None:
         images = [m for m in messages if m.kind is MessageKind.IMAGE and m.media_id]
         audios = [m for m in messages if m.kind is MessageKind.AUDIO and m.media_id]
-        texts = [m.text for m in messages if m.kind is MessageKind.TEXT and m.text]
-        if not images and not audios:
+        texts = [m.text.strip() for m in messages if m.kind is MessageKind.TEXT and m.text]
+        written_question = " ".join(text for text in texts if text)
+        if (
+            not images
+            and not audios
+            and (
+                not written_question or written_question.casefold().strip(" .!?…") in _HELP_REQUESTS
+            )
+        ):
             raise _RejectedError("aide", self._messages.help)
+        if len(written_question) > _MAX_TEXT_CHARS:
+            raise _RejectedError("texte_trop_long", self._messages.text_too_long)
 
         with media_workspace() as workspace:
             image, image_mime = None, None
@@ -205,7 +242,7 @@ class XamXamBot:
                 image=image,
                 image_mime_type=image_mime,
                 transcript=" ".join(t for t in transcripts if t) or None,
-                text=" ".join(texts) or None,
+                text=written_question or None,
             )
             solution = await self._solve_verified(problem, metrics)
         # Le dossier temporaire et les médias sont effacés ici, avant la synthèse.

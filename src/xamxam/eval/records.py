@@ -61,6 +61,18 @@ class OutputPaths:
         return self.root / "humain" / "evaluation_humaine.csv"
 
     @property
+    def blind_dir(self) -> Path:
+        return self.root / "humain" / "aveugle"
+
+    @property
+    def blind_csv(self) -> Path:
+        return self.blind_dir / "evaluation.csv"
+
+    @property
+    def blind_map_csv(self) -> Path:
+        return self.root / "humain" / "correspondance_aveugle.csv"
+
+    @property
     def run_info_json(self) -> Path:
         return self.root / "run_info.json"
 

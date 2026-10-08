@@ -18,7 +18,7 @@ from xamxam.eval.records import (
     write_terms,
     write_transcriptions,
 )
-from xamxam.lexicon import LexiconIndex, TermStatus
+from xamxam.lexicon import VALIDATED_ONLY, LexiconIndex, TermStatus
 from xamxam.pipeline import PreparedText, XamXamPipeline
 from xamxam.providers import STTProvider, TTSProvider
 
@@ -33,16 +33,25 @@ class RunResult:
     applied: dict[str, AppliedTerms]
 
 
-def build_target(term: str, index: LexiconIndex) -> TargetTerm:
-    """Graphies acceptées pour un terme : celles du lexique s'il y figure, sinon le terme seul."""
+def build_target(
+    term: str,
+    index: LexiconIndex,
+    applied_statuses: frozenset[TermStatus] = VALIDATED_ONLY,
+) -> TargetTerm:
+    """N'accepte une prononciation que si son statut est activé pour ce benchmark."""
     entry = index.lookup(term)
     if entry is None:
         logger.warning("Terme cible absent du lexique : « %s ».", term)
         return TargetTerm(term=term, source_forms=(term,), accepted_forms=(term,))
+    accepted = (
+        (*entry.forms, entry.pronunciation)
+        if entry.is_applicable(applied_statuses)
+        else entry.forms
+    )
     return TargetTerm(
         term=term,
         source_forms=entry.forms,
-        accepted_forms=(*entry.forms, entry.pronunciation),
+        accepted_forms=accepted,
     )
 
 
@@ -82,7 +91,10 @@ def run_evaluation(
 
     for sentence in sentences:
         source = sentence.text(text_column)
-        targets = [build_target(term, pipeline.index) for term in sentence.target_terms]
+        targets = [
+            build_target(term, pipeline.index, pipeline.applied_statuses)
+            for term in sentence.target_terms
+        ]
 
         prepared = pipeline.prepare(source)
         for replacement in prepared.replacements:

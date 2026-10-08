@@ -19,13 +19,17 @@ def test_settings_bot_variables() -> None:
             "WHATSAPP_APP_SECRET": "s3cret",
             "LOG_HASH_KEY": "k3y",
             "XAMXAM_CACHE_DIR": "/cache",
+            "XAMXAM_STATE_DIR": "/state",
         }
     )
     assert settings.unlimited_numbers == {"221771234567", "221780000000"}
     assert settings.cache_dir == Path("/cache")
+    assert settings.state_dir == Path("/state")
     assert settings.whatsapp_graph_api_version == "v23.0"
     assert "WHATSAPP_APP_SECRET" not in settings.missing_bot_variables()
     assert "LLM_PROVIDER" in settings.missing_bot_variables()
+    assert {"KVICC_TTS_URL", "KVICC_STT_URL"} <= set(settings.missing_bot_variables())
+    assert Settings.from_env({"XAMXAM_ENABLE_DEV_ROUTES": "true"}).enable_dev_routes
     bedrock = Settings.from_env({"LLM_PROVIDER": "Bedrock", "TRANSLATE_FROM_FRENCH": "true"})
     assert bedrock.llm_provider == "bedrock" and bedrock.translate_from_french
     assert {"BEDROCK_MODEL_ID", "BEDROCK_REGION"} <= set(bedrock.missing_bot_variables())

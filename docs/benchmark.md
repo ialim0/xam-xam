@@ -104,11 +104,28 @@ python -m xamxam.eval run --output-dir outputs/benchmark-100
 Un `run` interrompu peut être relancé : les audios et transcriptions déjà obtenus viennent du
 cache (`.cache/tts`, `.cache/stt`). `--no-cache` force de nouvelles requêtes.
 
-### 7. Notation humaine
+### 7. Notation humaine à l'aveugle
 
-Remplissez `outputs/benchmark-100/humain/evaluation_humaine.csv` (300 lignes : 100 phrases ×
-3 conditions) : `note_correction_wolof` et `note_prononciation_termes` de 1 à 5, et
-`mots_mal_prononces` séparés par `;`. Un nouveau `run` n'écrase jamais une fiche existante.
+```bash
+python -m xamxam.eval blind --output-dir outputs/benchmark-100
+```
+
+Transmettez aux évaluateurs **seulement** `humain/aveugle/` : la fiche
+`evaluation.csv` et les 300 audios renommés ne montrent ni condition ni texte envoyé au TTS.
+La colonne `texte_de_reference` donne la même phrase de départ pour les trois versions.
+Gardez `humain/correspondance_aveugle.csv` séparé : il relie les échantillons aux conditions.
+
+Remplissez `note_correction_wolof` et `note_prononciation_termes` de 1 à 5, et
+`mots_mal_prononces` séparés par `;`. Conservez les identifiants et les noms de fichiers.
+Après réception de la fiche annotée :
+
+```bash
+python -m xamxam.eval unblind --output-dir outputs/benchmark-100
+```
+
+L'import valide la fiche et remplit `humain/evaluation_humaine.csv`, que `report` utilise.
+Une nouvelle commande `blind` ou `unblind` n'écrase pas les notes existantes sans l'option
+explicite `--overwrite-blind` ou `--overwrite-human`.
 
 ### 8. Rapport
 

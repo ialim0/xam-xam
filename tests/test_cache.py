@@ -1,6 +1,11 @@
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+import pytest
+
 from xamxam.providers import CachedTTSProvider, MockSTTProvider, MockTTSProvider, TTSProvider
+from xamxam.providers.cache import DiskCache
 
 
 class CountingTTS(TTSProvider):
@@ -57,6 +62,27 @@ def test_no_temporary_file_is_left(tmp_path: Path) -> None:
     files = [p for p in tmp_path.rglob("*") if p.is_file()]
     assert [p.suffix for p in files] == [".wav"]
     assert files[0] == tts.cache_path("triangle", "wo")
+
+
+def test_concurrent_cache_writes_use_separate_temporary_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cache = DiskCache(tmp_path, ".wav", name="tts")
+    barrier = threading.Barrier(2)
+    original = Path.write_bytes
+
+    def write_together(path: Path, value: bytes) -> int:
+        count = original(path, value)
+        if path.suffix == ".tmp":
+            barrier.wait(timeout=5)
+        return count
+
+    monkeypatch.setattr(Path, "write_bytes", write_together)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(lambda value: cache.put("same-key", value), (b"one", b"two")))
+    assert results == [None, None]
+    assert cache.get("same-key") in (b"one", b"two")
+    assert list(tmp_path.rglob("*.tmp")) == []
 
 
 class CountingSTT(MockSTTProvider):

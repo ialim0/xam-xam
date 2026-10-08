@@ -42,7 +42,14 @@ def test_timalens_client_requires_key_and_hides_it() -> None:
 
 @pytest.fixture
 def client(pipeline: XamXamPipeline) -> TestClient:
-    return TestClient(create_app(Settings(), pipeline=pipeline, tts=MockTTSProvider()))
+    return TestClient(
+        create_app(Settings(enable_dev_routes=True), pipeline=pipeline, tts=MockTTSProvider())
+    )
+
+
+def test_dev_speak_is_disabled_by_default(pipeline: XamXamPipeline) -> None:
+    app = create_app(Settings(), pipeline=pipeline, tts=MockTTSProvider())
+    assert TestClient(app).post("/dev/speak", json={"text": "AB²"}).status_code == 404
 
 
 def test_dev_speak_returns_prepared_audio(client: TestClient) -> None:
