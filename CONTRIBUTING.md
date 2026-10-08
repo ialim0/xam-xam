@@ -5,14 +5,15 @@ prononciations** dans le lexique.
 
 ## Proposer ou corriger une prononciation
 
-1. Ouvrez une *issue* « Prononciation » ou directement une *pull request* vers la branche `staging`.
+1. Ouvrez une *issue* « Prononciation » ou une *pull request* vers `main`.
 2. Modifiez `data/lexicon/xam_xam_lexique_v0.json` en respectant le format ci-dessous.
 3. Indiquez dans la description :
    - le terme et la prononciation proposée ;
    - si possible un enregistrement audio (note vocale) de la bonne prononciation ;
    - la phrase d'exemple dans laquelle le TTS se trompe.
-4. Un **locuteur natif** relit la proposition. Une fois validée, il ajoute son nom (ou pseudonyme)
-   dans `validated_by`, passe `statut` à `valide`, et la PR peut être fusionnée.
+4. Laissez `statut` à `brouillon` tant qu'un **locuteur natif** n'a pas réellement écouté la
+   proposition. Après validation, inscrivez dans `validated_by` un nom ou pseudonyme choisi
+   avec son accord, puis passez `statut` à `valide`.
 
 Pour les termes cibles du benchmark, le plus simple est le fichier
 `data/lexicon/termes_cibles_a_valider.csv` : remplir `prononciation_validee` et `validateur`, puis
@@ -72,9 +73,10 @@ pytest
 - Commentaires en français, noms de fonctions et de variables en anglais.
 - Tous les tests doivent passer **sans aucune clé** (providers mock).
 - Ne commitez jamais de clé ni de fichier `.env`.
-- Les PR se font vers `staging`, `main` reçoit les versions stables.
+- Les PR ciblent `main` et doivent passer la CI (Ruff et tests) avant fusion.
 
 ## Licences
 
 En contribuant, vous acceptez que votre code soit publié sous licence MIT, et vos contributions au
-lexique et aux jeux de phrases sous licence CC BY-SA 4.0.
+lexique, aux jeux de phrases et aux résultats textuels sous licence CC BY-SA 4.0. Ne joignez
+aucun média d'élève, secret ou enregistrement de tiers sans droit de redistribution.

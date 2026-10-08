@@ -1,0 +1,658 @@
+id,condition,terme,apparitions,erreurs
+P001,brut,triangle rectangle,1,1
+P001,brut,carré,2,1
+P001,brut,hypoténuse,1,1
+P001,brut,somme,1,0
+P001,brut,côté,1,1
+P001,normalise,triangle rectangle,1,1
+P001,normalise,carré,2,1
+P001,normalise,hypoténuse,1,1
+P001,normalise,somme,1,0
+P001,normalise,côté,1,1
+P001,lexique,triangle rectangle,1,1
+P001,lexique,carré,2,0
+P001,lexique,hypoténuse,1,1
+P001,lexique,somme,1,0
+P001,lexique,côté,1,1
+P002,brut,théorème de Pythagore,1,1
+P002,brut,triangle rectangle,1,1
+P002,normalise,théorème de Pythagore,1,1
+P002,normalise,triangle rectangle,1,1
+P002,lexique,théorème de Pythagore,1,1
+P002,lexique,triangle rectangle,1,1
+P003,brut,hypoténuse,1,1
+P003,brut,côté,1,0
+P003,brut,triangle rectangle,1,0
+P003,brut,angle droit,1,1
+P003,normalise,hypoténuse,1,1
+P003,normalise,côté,1,0
+P003,normalise,triangle rectangle,1,0
+P003,normalise,angle droit,1,1
+P003,lexique,hypoténuse,1,1
+P003,lexique,côté,1,0
+P003,lexique,triangle rectangle,1,1
+P003,lexique,angle droit,1,1
+P004,brut,angle droit,1,0
+P004,brut,sommet,1,1
+P004,brut,hypoténuse,1,1
+P004,brut,segment,1,1
+P004,normalise,angle droit,1,1
+P004,normalise,sommet,1,1
+P004,normalise,hypoténuse,1,1
+P004,normalise,segment,1,1
+P004,lexique,angle droit,1,1
+P004,lexique,sommet,1,1
+P004,lexique,hypoténuse,1,1
+P004,lexique,segment,1,1
+P005,brut,somme,1,1
+P005,brut,carré,2,0
+P005,brut,côté,1,1
+P005,brut,hypoténuse,1,1
+P005,normalise,somme,1,1
+P005,normalise,carré,2,0
+P005,normalise,côté,1,1
+P005,normalise,hypoténuse,1,1
+P005,lexique,somme,1,1
+P005,lexique,carré,2,2
+P005,lexique,côté,1,1
+P005,lexique,hypoténuse,1,1
+P006,brut,égalité,1,1
+P006,brut,théorème de Pythagore,1,1
+P006,brut,angle droit,1,1
+P006,normalise,égalité,1,0
+P006,normalise,théorème de Pythagore,1,1
+P006,normalise,angle droit,1,1
+P006,lexique,égalité,1,1
+P006,lexique,théorème de Pythagore,1,1
+P006,lexique,angle droit,1,1
+P007,brut,triangle rectangle,1,1
+P007,brut,longueur,1,0
+P007,brut,hypoténuse,1,1
+P007,normalise,triangle rectangle,1,0
+P007,normalise,longueur,1,0
+P007,normalise,hypoténuse,1,1
+P007,lexique,triangle rectangle,1,1
+P007,lexique,longueur,1,0
+P007,lexique,hypoténuse,1,1
+P008,brut,racine carrée,1,1
+P008,normalise,racine carrée,1,1
+P008,lexique,racine carrée,1,1
+P009,brut,triangle rectangle,1,1
+P009,brut,angle droit,1,1
+P009,normalise,triangle rectangle,1,1
+P009,normalise,angle droit,1,1
+P009,lexique,triangle rectangle,1,1
+P009,lexique,angle droit,1,1
+P010,brut,centimètres,1,0
+P010,normalise,centimètres,1,1
+P010,lexique,centimètres,1,1
+P011,brut,longueur,1,0
+P011,brut,hypoténuse,1,1
+P011,brut,côté,1,1
+P011,normalise,longueur,1,0
+P011,normalise,hypoténuse,1,1
+P011,normalise,côté,1,1
+P011,lexique,longueur,1,0
+P011,lexique,hypoténuse,1,1
+P011,lexique,côté,1,1
+P012,brut,côté,1,1
+P012,brut,angle droit,1,1
+P012,brut,hypoténuse,1,1
+P012,normalise,côté,1,0
+P012,normalise,angle droit,1,1
+P012,normalise,hypoténuse,1,1
+P012,lexique,côté,1,0
+P012,lexique,angle droit,1,1
+P012,lexique,hypoténuse,1,1
+P013,brut,arrondi,1,1
+P013,brut,dixième,1,1
+P013,normalise,arrondi,1,0
+P013,normalise,dixième,1,1
+P013,lexique,arrondi,1,1
+P013,lexique,dixième,1,1
+P014,brut,arrondi,1,1
+P014,brut,hypoténuse,1,1
+P014,brut,dixième,1,1
+P014,normalise,arrondi,1,1
+P014,normalise,hypoténuse,1,1
+P014,normalise,dixième,1,1
+P014,lexique,arrondi,1,1
+P014,lexique,hypoténuse,1,1
+P014,lexique,dixième,1,1
+P015,brut,triangle rectangle,1,1
+P015,brut,côté,1,1
+P015,brut,mètres,2,2
+P015,normalise,triangle rectangle,1,1
+P015,normalise,côté,1,0
+P015,normalise,mètres,2,2
+P015,lexique,triangle rectangle,1,1
+P015,lexique,côté,1,0
+P015,lexique,mètres,2,2
+P016,brut,hypoténuse,1,1
+P016,brut,mètres,1,1
+P016,normalise,hypoténuse,1,1
+P016,normalise,mètres,1,1
+P016,lexique,hypoténuse,1,1
+P016,lexique,mètres,1,1
+P017,brut,triangle rectangle,1,1
+P017,brut,côté,1,0
+P017,normalise,triangle rectangle,1,1
+P017,normalise,côté,1,0
+P017,lexique,triangle rectangle,1,1
+P017,lexique,côté,1,0
+P018,brut,racine carrée,1,1
+P018,normalise,racine carrée,1,1
+P018,lexique,racine carrée,1,1
+P019,brut,triangle rectangle,1,1
+P019,brut,hypoténuse,1,1
+P019,normalise,triangle rectangle,1,1
+P019,normalise,hypoténuse,1,1
+P019,lexique,triangle rectangle,1,1
+P019,lexique,hypoténuse,1,1
+P020,brut,longueur,1,1
+P020,brut,centimètres,1,0
+P020,normalise,longueur,1,1
+P020,normalise,centimètres,1,1
+P020,lexique,longueur,1,0
+P020,lexique,centimètres,1,0
+P021,brut,longueur,1,1
+P021,brut,côté,2,0
+P021,brut,hypoténuse,1,1
+P021,normalise,longueur,1,0
+P021,normalise,côté,2,0
+P021,normalise,hypoténuse,1,1
+P021,lexique,longueur,1,0
+P021,lexique,côté,2,0
+P021,lexique,hypoténuse,1,1
+P022,brut,racine carrée,1,1
+P022,brut,côté,1,0
+P022,normalise,racine carrée,1,1
+P022,normalise,côté,1,0
+P022,lexique,racine carrée,1,1
+P022,lexique,côté,1,1
+P023,brut,distance,1,0
+P023,brut,côté,1,1
+P023,brut,angle droit,1,1
+P023,normalise,distance,1,0
+P023,normalise,côté,1,1
+P023,normalise,angle droit,1,1
+P023,lexique,distance,1,0
+P023,lexique,côté,1,1
+P023,lexique,angle droit,1,1
+P024,brut,angle droit,1,1
+P024,brut,hypoténuse,1,1
+P024,normalise,angle droit,1,1
+P024,normalise,hypoténuse,1,1
+P024,lexique,angle droit,1,1
+P024,lexique,hypoténuse,1,1
+P025,brut,triangle rectangle,1,1
+P025,brut,réciproque,1,1
+P025,normalise,triangle rectangle,1,1
+P025,normalise,réciproque,1,1
+P025,lexique,triangle rectangle,1,1
+P025,lexique,réciproque,1,1
+P026,brut,réciproque,1,1
+P026,brut,théorème de Pythagore,1,1
+P026,brut,angle droit,1,0
+P026,normalise,réciproque,1,1
+P026,normalise,théorème de Pythagore,1,1
+P026,normalise,angle droit,1,0
+P026,lexique,réciproque,1,1
+P026,lexique,théorème de Pythagore,1,1
+P026,lexique,angle droit,1,1
+P027,brut,côté,1,0
+P027,normalise,côté,1,0
+P027,lexique,côté,1,0
+P028,brut,égalité,1,1
+P028,brut,triangle rectangle,1,1
+P028,normalise,égalité,1,0
+P028,normalise,triangle rectangle,1,1
+P028,lexique,égalité,1,1
+P028,lexique,triangle rectangle,1,1
+P029,brut,réciproque,1,1
+P029,normalise,réciproque,1,1
+P029,lexique,réciproque,1,1
+P030,brut,somme,1,1
+P030,brut,carré,2,0
+P030,brut,côté,2,2
+P030,brut,angle droit,1,0
+P030,normalise,somme,1,1
+P030,normalise,carré,2,0
+P030,normalise,côté,2,2
+P030,normalise,angle droit,1,0
+P030,lexique,somme,1,0
+P030,lexique,carré,2,0
+P030,lexique,côté,2,2
+P030,lexique,angle droit,1,1
+P031,brut,égalité,1,1
+P031,brut,réciproque,1,1
+P031,brut,angle droit,1,1
+P031,normalise,égalité,1,0
+P031,normalise,réciproque,1,1
+P031,normalise,angle droit,1,1
+P031,lexique,égalité,1,0
+P031,lexique,réciproque,1,1
+P031,lexique,angle droit,1,1
+P032,brut,égalité,1,1
+P032,brut,théorème de Pythagore,1,1
+P032,normalise,égalité,1,1
+P032,normalise,théorème de Pythagore,1,1
+P032,lexique,égalité,1,0
+P032,lexique,théorème de Pythagore,1,1
+P033,brut,côté,1,1
+P033,normalise,côté,1,1
+P033,lexique,côté,1,1
+P034,brut,contraposée,1,1
+P034,brut,triangle rectangle,1,1
+P034,normalise,contraposée,1,1
+P034,normalise,triangle rectangle,1,1
+P034,lexique,contraposée,1,1
+P034,lexique,triangle rectangle,1,1
+P035,brut,contraposée,1,1
+P035,brut,théorème de Pythagore,1,1
+P035,brut,égalité,1,1
+P035,brut,angle droit,1,1
+P035,normalise,contraposée,1,1
+P035,normalise,théorème de Pythagore,1,1
+P035,normalise,égalité,1,0
+P035,normalise,angle droit,1,0
+P035,lexique,contraposée,1,1
+P035,lexique,théorème de Pythagore,1,1
+P035,lexique,égalité,1,1
+P035,lexique,angle droit,1,1
+P036,brut,contraposée,1,1
+P036,brut,angle droit,1,1
+P036,normalise,contraposée,1,1
+P036,normalise,angle droit,1,1
+P036,lexique,contraposée,1,1
+P036,lexique,angle droit,1,1
+P037,brut,longueur,1,0
+P037,normalise,longueur,1,0
+P037,lexique,longueur,1,0
+P038,brut,égalité,1,0
+P038,brut,contraposée,1,1
+P038,normalise,égalité,1,1
+P038,normalise,contraposée,1,1
+P038,lexique,égalité,1,1
+P038,lexique,contraposée,1,0
+P039,brut,hypoténuse,1,1
+P039,brut,côté,1,1
+P039,brut,égalité,1,1
+P039,brut,théorème de Pythagore,1,1
+P039,normalise,hypoténuse,1,1
+P039,normalise,côté,1,1
+P039,normalise,égalité,1,1
+P039,normalise,théorème de Pythagore,1,1
+P039,lexique,hypoténuse,1,1
+P039,lexique,côté,1,1
+P039,lexique,égalité,1,1
+P039,lexique,théorème de Pythagore,1,1
+P040,brut,carré,2,1
+P040,brut,hypoténuse,1,1
+P040,brut,somme,1,0
+P040,brut,côté,1,1
+P040,normalise,carré,2,1
+P040,normalise,hypoténuse,1,1
+P040,normalise,somme,1,0
+P040,normalise,côté,1,1
+P040,lexique,carré,2,0
+P040,lexique,hypoténuse,1,1
+P040,lexique,somme,1,0
+P040,lexique,côté,1,0
+T001,brut,segment,2,2
+T001,brut,droites parallèles,1,1
+T001,normalise,segment,2,2
+T001,normalise,droites parallèles,1,1
+T001,lexique,segment,2,2
+T001,lexique,droites parallèles,1,1
+T002,brut,droites parallèles,1,1
+T002,brut,sommet,1,1
+T002,normalise,droites parallèles,1,1
+T002,normalise,sommet,1,1
+T002,lexique,droites parallèles,1,1
+T002,lexique,sommet,1,1
+T003,brut,alignés,2,2
+T003,normalise,alignés,2,2
+T003,lexique,alignés,2,2
+T004,brut,côté,1,0
+T004,normalise,côté,1,0
+T004,lexique,côté,1,0
+T005,brut,réduction,1,0
+T005,normalise,réduction,1,1
+T005,lexique,réduction,1,1
+T006,brut,théorème de Thalès,1,1
+T006,brut,droites parallèles,1,1
+T006,normalise,théorème de Thalès,1,1
+T006,normalise,droites parallèles,1,1
+T006,lexique,théorème de Thalès,1,1
+T006,lexique,droites parallèles,1,1
+T007,brut,sommet,1,1
+T007,brut,alignés,1,0
+T007,normalise,sommet,1,1
+T007,normalise,alignés,1,0
+T007,lexique,sommet,1,1
+T007,lexique,alignés,1,1
+T008,brut,alignés,1,1
+T008,normalise,alignés,1,1
+T008,lexique,alignés,1,1
+T009,brut,théorème de Thalès,1,1
+T009,brut,égalité,1,1
+T009,normalise,théorème de Thalès,1,1
+T009,normalise,égalité,1,0
+T009,lexique,théorème de Thalès,1,1
+T009,lexique,égalité,1,0
+T010,brut,rapport,3,3
+T010,normalise,rapport,3,3
+T010,lexique,rapport,3,3
+T011,brut,égalité,1,1
+T011,brut,rapport,1,1
+T011,brut,longueur,1,0
+T011,brut,proportionnel,1,0
+T011,normalise,égalité,1,1
+T011,normalise,rapport,1,1
+T011,normalise,longueur,1,0
+T011,normalise,proportionnel,1,0
+T011,lexique,égalité,1,1
+T011,lexique,rapport,1,1
+T011,lexique,longueur,1,1
+T011,lexique,proportionnel,1,1
+T012,brut,longueur,2,0
+T012,brut,proportionnel,1,0
+T012,normalise,longueur,2,0
+T012,normalise,proportionnel,1,1
+T012,lexique,longueur,2,0
+T012,lexique,proportionnel,1,1
+T013,brut,égalité,1,1
+T013,brut,rapport,1,0
+T013,normalise,égalité,1,1
+T013,normalise,rapport,1,0
+T013,lexique,égalité,1,1
+T013,lexique,rapport,1,1
+T014,brut,réduction,1,1
+T014,brut,rapport,1,1
+T014,normalise,réduction,1,1
+T014,normalise,rapport,1,0
+T014,lexique,réduction,1,1
+T014,lexique,rapport,1,0
+T015,brut,réduction,1,1
+T015,brut,longueur,1,0
+T015,normalise,réduction,1,1
+T015,normalise,longueur,1,0
+T015,lexique,réduction,1,1
+T015,lexique,longueur,1,0
+T016,brut,théorème de Thalès,1,1
+T016,brut,rapport,1,0
+T016,normalise,théorème de Thalès,1,1
+T016,normalise,rapport,1,1
+T016,lexique,théorème de Thalès,1,1
+T016,lexique,rapport,1,0
+T017,brut,produit en croix,1,1
+T017,normalise,produit en croix,1,0
+T017,lexique,produit en croix,1,1
+T018,brut,produit en croix,1,0
+T018,normalise,produit en croix,1,0
+T018,lexique,produit en croix,1,1
+T019,brut,produit en croix,1,1
+T019,brut,centimètres,1,1
+T019,normalise,produit en croix,1,1
+T019,normalise,centimètres,1,1
+T019,lexique,produit en croix,1,1
+T019,lexique,centimètres,1,0
+T020,brut,longueur,1,0
+T020,normalise,longueur,1,1
+T020,lexique,longueur,1,1
+T021,brut,centimètres,1,1
+T021,normalise,centimètres,1,1
+T021,lexique,centimètres,1,0
+T022,brut,distance,2,0
+T022,normalise,distance,2,0
+T022,lexique,distance,2,2
+T023,brut,rapport,1,0
+T023,normalise,rapport,1,1
+T023,lexique,rapport,1,0
+T024,brut,distance,1,0
+T024,brut,mètres,1,1
+T024,normalise,distance,1,0
+T024,normalise,mètres,1,1
+T024,lexique,distance,1,1
+T024,lexique,mètres,1,1
+T025,brut,mètres,1,1
+T025,brut,produit en croix,1,1
+T025,normalise,mètres,1,1
+T025,normalise,produit en croix,1,1
+T025,lexique,mètres,1,0
+T025,lexique,produit en croix,1,1
+T026,brut,arrondi,1,1
+T026,brut,dixième,1,0
+T026,normalise,arrondi,1,1
+T026,normalise,dixième,1,1
+T026,lexique,arrondi,1,1
+T026,lexique,dixième,1,1
+T027,brut,réduction,1,1
+T027,brut,longueur,1,0
+T027,brut,proportionnel,1,0
+T027,brut,segment,1,1
+T027,normalise,réduction,1,1
+T027,normalise,longueur,1,1
+T027,normalise,proportionnel,1,0
+T027,normalise,segment,1,1
+T027,lexique,réduction,1,1
+T027,lexique,longueur,1,1
+T027,lexique,proportionnel,1,1
+T027,lexique,segment,1,1
+T028,brut,milieu,1,1
+T028,brut,segment,1,1
+T028,normalise,milieu,1,1
+T028,normalise,segment,1,1
+T028,lexique,milieu,1,1
+T028,lexique,segment,1,1
+T029,brut,milieu,2,2
+T029,normalise,milieu,2,2
+T029,lexique,milieu,2,2
+T030,brut,segment,1,1
+T030,brut,milieu,1,1
+T030,normalise,segment,1,1
+T030,normalise,milieu,1,1
+T030,lexique,segment,1,1
+T030,lexique,milieu,1,1
+T031,brut,rapport,1,1
+T031,brut,réciproque,1,1
+T031,normalise,rapport,1,0
+T031,normalise,réciproque,1,1
+T031,lexique,rapport,1,1
+T031,lexique,réciproque,1,1
+T032,brut,réciproque,1,1
+T032,brut,théorème de Thalès,1,1
+T032,brut,droites parallèles,1,1
+T032,normalise,réciproque,1,1
+T032,normalise,théorème de Thalès,1,1
+T032,normalise,droites parallèles,1,1
+T032,lexique,réciproque,1,1
+T032,lexique,théorème de Thalès,1,1
+T032,lexique,droites parallèles,1,1
+T033,brut,alignés,1,1
+T033,normalise,alignés,1,1
+T033,lexique,alignés,1,1
+T034,brut,réciproque,1,1
+T034,brut,alignés,1,1
+T034,normalise,réciproque,1,1
+T034,normalise,alignés,1,1
+T034,lexique,réciproque,1,1
+T034,lexique,alignés,1,1
+T035,brut,égalité,1,0
+T035,normalise,égalité,1,1
+T035,lexique,égalité,1,1
+T036,brut,réciproque,1,1
+T036,brut,théorème de Thalès,1,1
+T036,brut,droites parallèles,1,1
+T036,normalise,réciproque,1,1
+T036,normalise,théorème de Thalès,1,1
+T036,normalise,droites parallèles,1,1
+T036,lexique,réciproque,1,1
+T036,lexique,théorème de Thalès,1,1
+T036,lexique,droites parallèles,1,0
+T037,brut,rapport,1,1
+T037,brut,droites parallèles,1,1
+T037,normalise,rapport,1,1
+T037,normalise,droites parallèles,1,1
+T037,lexique,rapport,1,1
+T037,lexique,droites parallèles,1,1
+T038,brut,rapport,1,1
+T038,normalise,rapport,1,1
+T038,lexique,rapport,1,1
+T039,brut,perpendiculaire,2,2
+T039,normalise,perpendiculaire,2,2
+T039,lexique,perpendiculaire,2,2
+T040,brut,perpendiculaire,1,1
+T040,brut,droites parallèles,1,1
+T040,normalise,perpendiculaire,1,1
+T040,normalise,droites parallèles,1,1
+T040,lexique,perpendiculaire,1,1
+T040,lexique,droites parallèles,1,1
+C001,brut,hauteur,1,1
+C001,normalise,hauteur,1,1
+C001,lexique,hauteur,1,1
+C002,brut,perpendiculaire,1,1
+C002,brut,triangle rectangle,1,1
+C002,normalise,perpendiculaire,1,1
+C002,normalise,triangle rectangle,1,1
+C002,lexique,perpendiculaire,1,1
+C002,lexique,triangle rectangle,1,1
+C003,brut,hauteur,1,0
+C003,brut,racine carrée,1,1
+C003,brut,mètres,1,1
+C003,normalise,hauteur,1,0
+C003,normalise,racine carrée,1,1
+C003,normalise,mètres,1,0
+C003,lexique,hauteur,1,1
+C003,lexique,racine carrée,1,1
+C003,lexique,mètres,1,0
+C004,brut,mètres,2,2
+C004,brut,longueur,1,1
+C004,brut,diagonale,1,1
+C004,normalise,mètres,2,2
+C004,normalise,longueur,1,0
+C004,normalise,diagonale,1,1
+C004,lexique,mètres,2,2
+C004,lexique,longueur,1,0
+C004,lexique,diagonale,1,1
+C005,brut,diagonale,1,1
+C005,brut,arrondi,1,1
+C005,brut,dixième,1,1
+C005,normalise,diagonale,1,1
+C005,normalise,arrondi,1,1
+C005,normalise,dixième,1,1
+C005,lexique,diagonale,1,1
+C005,lexique,arrondi,1,1
+C005,lexique,dixième,1,1
+C006,brut,distance,1,0
+C006,brut,sommet,1,1
+C006,brut,diagonale,1,1
+C006,normalise,distance,1,0
+C006,normalise,sommet,1,1
+C006,normalise,diagonale,1,1
+C006,lexique,distance,1,1
+C006,lexique,sommet,1,0
+C006,lexique,diagonale,1,1
+C007,brut,hauteur,1,0
+C007,brut,longueur,1,1
+C007,normalise,hauteur,1,1
+C007,normalise,longueur,1,0
+C007,lexique,hauteur,1,1
+C007,lexique,longueur,1,1
+C008,brut,longueur,1,0
+C008,brut,hypoténuse,1,1
+C008,normalise,longueur,1,0
+C008,normalise,hypoténuse,1,1
+C008,lexique,longueur,1,0
+C008,lexique,hypoténuse,1,1
+C009,brut,hauteur,1,1
+C009,normalise,hauteur,1,1
+C009,lexique,hauteur,1,1
+C010,brut,hauteur,2,2
+C010,brut,proportionnel,1,0
+C010,normalise,hauteur,2,2
+C010,normalise,proportionnel,1,0
+C010,lexique,hauteur,2,2
+C010,lexique,proportionnel,1,1
+C011,brut,théorème de Thalès,1,1
+C011,brut,hauteur,1,1
+C011,brut,mètres,1,1
+C011,normalise,théorème de Thalès,1,1
+C011,normalise,hauteur,1,1
+C011,normalise,mètres,1,1
+C011,lexique,théorème de Thalès,1,1
+C011,lexique,hauteur,1,1
+C011,lexique,mètres,1,0
+C012,brut,perpendiculaire,1,1
+C012,brut,hauteur,1,1
+C012,normalise,perpendiculaire,1,1
+C012,normalise,hauteur,1,1
+C012,lexique,perpendiculaire,1,1
+C012,lexique,hauteur,1,1
+C013,brut,longueur,1,1
+C013,normalise,longueur,1,1
+C013,lexique,longueur,1,1
+C014,brut,hypoténuse,1,1
+C014,brut,triangle rectangle,1,1
+C014,brut,mètres,1,1
+C014,normalise,hypoténuse,1,1
+C014,normalise,triangle rectangle,1,1
+C014,normalise,mètres,1,1
+C014,lexique,hypoténuse,1,1
+C014,lexique,triangle rectangle,1,1
+C014,lexique,mètres,1,0
+C015,brut,longueur,1,1
+C015,brut,hauteur,1,1
+C015,brut,diagonale,1,1
+C015,normalise,longueur,1,1
+C015,normalise,hauteur,1,0
+C015,normalise,diagonale,1,1
+C015,lexique,longueur,1,1
+C015,lexique,hauteur,1,0
+C015,lexique,diagonale,1,1
+C016,brut,diagonale,1,1
+C016,brut,centimètres,1,1
+C016,brut,arrondi,1,1
+C016,brut,dixième,1,1
+C016,normalise,diagonale,1,1
+C016,normalise,centimètres,1,0
+C016,normalise,arrondi,1,1
+C016,normalise,dixième,1,1
+C016,lexique,diagonale,1,1
+C016,lexique,centimètres,1,1
+C016,lexique,arrondi,1,1
+C016,lexique,dixième,1,1
+C017,brut,carré,1,0
+C017,brut,côté,1,1
+C017,brut,centimètres,1,1
+C017,normalise,carré,1,0
+C017,normalise,côté,1,1
+C017,normalise,centimètres,1,1
+C017,lexique,carré,1,0
+C017,lexique,côté,1,1
+C017,lexique,centimètres,1,1
+C018,brut,diagonale,1,1
+C018,brut,centimètres,1,1
+C018,normalise,diagonale,1,1
+C018,normalise,centimètres,1,0
+C018,lexique,diagonale,1,0
+C018,lexique,centimètres,1,0
+C019,brut,angle droit,1,1
+C019,brut,diagonale,1,1
+C019,normalise,angle droit,1,1
+C019,normalise,diagonale,1,1
+C019,lexique,angle droit,1,1
+C019,lexique,diagonale,1,1
+C020,brut,diagonale,1,1
+C020,brut,égalité,1,0
+C020,brut,angle droit,1,1
+C020,brut,réciproque,1,1
+C020,normalise,diagonale,1,1
+C020,normalise,égalité,1,1
+C020,normalise,angle droit,1,1
+C020,normalise,réciproque,1,1
+C020,lexique,diagonale,1,0
+C020,lexique,égalité,1,1
+C020,lexique,angle droit,1,1
+C020,lexique,réciproque,1,1

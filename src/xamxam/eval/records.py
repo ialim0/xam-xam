@@ -131,7 +131,7 @@ _TERM_COLUMNS = ("id", "condition", "terme", "apparitions", "erreurs")
 def _write_rows(path: Path, columns: tuple[str, ...], rows: Iterable[tuple[object, ...]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="") as file:
-        writer = csv.writer(file)
+        writer = csv.writer(file, lineterminator="\n")
         writer.writerow(columns)
         writer.writerows(rows)
 

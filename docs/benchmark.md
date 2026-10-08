@@ -1,173 +1,83 @@
-# Benchmark de prononciation (TTS) sur 100 phrases
+# Protocole du benchmark TTS → STT
 
-Objectif : mesurer, sur 100 phrases de mathématiques (40 Pythagore, 40 Thalès, 20 situations
-concrètes au Sénégal), ce qu'apportent la **normalisation** et le **lexique** à la prononciation
-du TTS Kiriku, avec un aller-retour STT et une notation humaine.
+Ce document décrit comment produire un **nouveau run**. L'instantané déjà obtenu, ses chiffres et ses limites sont dans [résultats du benchmark](resultats-100.md) ; les CSV figés sont dans [`results/benchmark-100/`](../results/benchmark-100/). Ne lancez pas un nouveau run dans ce dossier : utilisez `outputs/`, ignoré par Git.
 
-- Phrases : [`data/eval/phrases_pythagore_thales.csv`](../data/eval/phrases_pythagore_thales.csv)
-  (colonne `wo` envoyée au TTS ; **`statut_wo = brouillon`** : le wolof est à faire relire).
-  Elles sont générées depuis [`tools/phrases_benchmark_100.py`](../tools/phrases_benchmark_100.py).
-- Lexique : [`data/lexicon/xam_xam_lexique_v0.json`](../data/lexicon/xam_xam_lexique_v0.json),
-  30 termes cibles, **tous en brouillon** tant qu'ils ne sont pas validés.
-- Trois conditions par phrase : `brut`, `normalise`, `lexique` (voir le README).
+## Corpus et conditions
 
-## Durée et nombre de requêtes
+[`data/eval/phrases_pythagore_thales.csv`](../data/eval/phrases_pythagore_thales.csv) contient 100 phrases synthétiques : 40 Pythagore, 40 Thalès et 20 situations concrètes. La colonne `wo` est envoyée au TTS ; son statut `brouillon` signifie qu'elle attend une relecture wolof. Les termes suivis figurent dans `termes_cibles`, séparés par `;`. Le [lexique](../data/lexicon/xam_xam_lexique_v0.json) contient les propositions de prononciation et leur statut.
 
-Le client Kiriku espace les requêtes de 2 s (30 par minute, TTS et STT confondus). Chaque
-condition coûte au plus 2 requêtes (1 TTS + 1 STT). Les caches TTS et STT de l'évaluation
-évitent de refaire une requête pour un texte ou un audio déjà traité : tant qu'aucun terme n'est
-validé, la condition `lexique` produit le même texte que `normalise` et ne coûte rien.
+Chaque phrase est traitée trois fois :
 
-| Étape | Requêtes Kiriku | Durée estimée |
-| --- | --- | --- |
-| 1. Remplir le CSV de validation | 0 | selon les validateurs (30 termes) |
-| 2. Réimporter le CSV | 0 | instantané |
-| 3. `check` | 0 | quelques secondes |
-| 4. `run --limit 5` | 20 à 30 | environ 1 min |
-| 5. Écouter les 15 audios | 0 | 10 min |
-| 6. `run` sur les 100 phrases | 380 à 570 (les 5 premières sont en cache) | 13 à 20 min |
-| 7. Notation humaine (300 lignes) | 0 | 2 à 3 h (environ 30 s par audio) |
-| 8. `report` | 0 | instantané |
+| Condition | Texte envoyé au TTS |
+| --- | --- |
+| `brut` | Colonne `wo` d'origine. |
+| `normalise` | Même phrase après lecture des nombres, unités et expressions mathématiques. |
+| `lexique` | Texte normalisé avec les prononciations du lexique activées pour le run. |
 
-L'API du challenge est disponible jusqu'au **16 octobre 2026** : prévoyez les étapes 4 et 6
-avant cette date.
+Pour mesurer les brouillons, il faut passer **explicitement** `--lexique-statut brouillon`. Le réglage par défaut `valide` n'applique que les entrées approuvées. Conservez le même fournisseur, les mêmes textes, la même langue de lecture et le même statut de lexique dans un run. Comparez les conditions d'un même run ; ne mélangez pas des sorties de dates ou de réglages différents.
 
-## Étapes
+### Valider le lexique avant un futur run
 
-### 0. Prérequis
+`python -m xamxam.lexicon export-validation` produit une fiche pour les termes cibles. Un locuteur natif renseigne `prononciation_validee` et `validateur` après écoute ; une proposition sans validation reste `brouillon`. `python -m xamxam.lexicon import-validation` refuse les lignes incomplètes ou les caractères ignorés par le TTS et met à jour le lexique. Pour évaluer seulement ces entrées approuvées, utilisez `--lexique-statut valide` et un nouveau dossier de sortie. Ne modifiez pas rétroactivement l'instantané publié.
+
+## Prérequis
+
+Python 3.11 ou plus récent, dépendances installées avec `pip install -e '.[dev]'`, et accès Kiriku pour obtenir de vrais audios. Copiez [`.env.example`](../.env.example) en `.env`, renseignez `KVICC_TTS_URL`, `KVICC_STT_URL` et `KVICC_API_KEY`, puis chargez le fichier dans votre environnement. Ne le versionnez pas. `--provider kvicc` échoue si le service n'est pas configuré ; `--provider mock` sert uniquement aux tests de code, car son audio silencieux et sa transcription exacte ne mesurent aucune prononciation.
 
 ```bash
-pip install -e ".[dev]"
-cp .env.example .env    # renseigner KVICC_TTS_URL, KVICC_STT_URL, KVICC_API_KEY
+cp .env.example .env
 set -a; source .env; set +a
 ```
 
-### 1. Faire valider les prononciations des termes cibles
-
-Ouvrez [`data/lexicon/termes_cibles_a_valider.csv`](../data/lexicon/termes_cibles_a_valider.csv)
-(une ligne par terme, triée par nombre d'occurrences). Pour chaque terme, un locuteur natif :
-
-- écoute ou lit la `prononciation_proposee` (proposition **brouillon**) ;
-- écrit la prononciation correcte dans `prononciation_validee` (orthographe wolof, minuscules,
-  sans chiffres ni symboles : le TTS ignore les caractères hors de son alphabet) ;
-- signe dans `validateur` ; une remarque éventuelle va dans `remarques`.
-
-Une ligne sans `prononciation_validee` reste en brouillon. Pour régénérer le fichier après une
-modification des phrases : `python -m xamxam.lexicon export-validation`.
-
-### 2. Réimporter les validations
+## Produire un run
 
 ```bash
-python -m xamxam.lexicon import-validation
-```
-
-Les lignes remplies et signées passent au statut **valide** dans le lexique. L'import est refusé
-en bloc si une ligne a une prononciation sans validateur, ou un caractère que le TTS ignorerait.
-La commande affiche ensuite le bilan du lexique (validés, brouillons, sans prononciation).
-
-### 3. Contrôler le jeu de phrases
-
-```bash
+python -m xamxam.lexicon
 python -m xamxam.eval check
+python -m xamxam.eval run --provider kvicc --lexique-statut brouillon \
+  --output-dir outputs/nouveau-run
+python -m xamxam.eval report --output-dir outputs/nouveau-run
 ```
 
-Vérifie 100 lignes et les identifiants P001–P040, T001–T040, C001–C020 ; chaque terme cible
-présent dans la colonne `wo` de sa phrase, au moins 4 fois au total et à des positions variées ;
-20 mots au plus par phrase ; 512 caractères au plus après normalisation ; au moins 60 phrases
-avec nombres supérieurs à 10, décimaux ou notations. Elle affiche, phrase par phrase, les
-caractères que le TTS ignorerait en condition brute et après Xam-Xam. Code de sortie 1 en cas
-d'erreur.
+`check` contrôle le format et la couverture du corpus sans appeler d'API. `run` produit les 300 WAV, les transcriptions et une fiche d'évaluation humaine vierge ; `report` calcule les tableaux. Pour un premier essai, ajoutez `--limit 5` **dans un autre dossier**. Les caches TTS/STT évitent de répéter des appels identiques ; `--no-cache` force de nouveaux appels. Notez la date, les URLs des services, la version du code, les options, le hash du corpus et du lexique : le fichier `run_info.json` actuel ne capture pas la version interne du service.
 
-### 4. Essai sur 5 phrases
-
-```bash
-python -m xamxam.eval run --limit 5 --output-dir outputs/essai
-```
-
-Options par défaut du benchmark : `--number-language fr` (nombres en lettres françaises) et
-`--lexique-statut valide` (seules les prononciations validées sont appliquées). Pour mesurer
-aussi les propositions brouillon, relancez avec `--lexique-statut brouillon` dans un autre
-dossier de sortie : le rapport signale alors clairement les prononciations non validées.
-
-### 5. Écouter
-
-Les audios sont dans `outputs/essai/audio/` : `{id}_brut.wav`, `{id}_normalise.wav`,
-`{id}_lexique.wav`. Vérifiez qu'ils sont audibles, que les nombres sont lus et que rien n'est
-coupé avant de lancer les 100 phrases.
-
-### 6. Les 100 phrases
-
-```bash
-python -m xamxam.eval run --output-dir outputs/benchmark-100
-```
-
-Pour commencer directement par l'écoute humaine sans consommer de quota STT, générez seulement
-les 300 WAV (trois conditions par phrase) :
+Si vous souhaitez préparer l'écoute sans STT :
 
 ```bash
 python -m xamxam.eval audio --provider kvicc --lexique-statut brouillon \
-  --output-dir outputs/benchmark-100
-python -m xamxam.eval blind --output-dir outputs/benchmark-100
+  --output-dir outputs/ecoute
+python -m xamxam.eval blind --output-dir outputs/ecoute
 ```
 
-Le fichier `audio/manifest.csv` indexe les WAV ; la commande `blind` fonctionne sans
-transcriptions. Le mode `brouillon` applique les propositions non validées : les notes portent
-donc sur des **candidates**, pas sur un lexique approuvé. Pour obtenir ensuite les métriques STT
-et le rapport complet, lancez `run` avec les **mêmes options** (`--provider kvicc`,
-`--lexique-statut brouillon`, `--output-dir outputs/benchmark-100`) : les WAV viennent du cache,
-et les notes humaines déjà saisies sont conservées.
+La commande `audio` crée aussi `audio/manifest.csv`. Vous pourrez ensuite lancer `run` dans **le même dossier** avec les mêmes options pour obtenir les transcriptions et le rapport ; le cache réutilise les audios correspondants.
 
-Un `run` interrompu peut être relancé : les audios et transcriptions déjà obtenus viennent du
-cache (`.cache/tts`, `.cache/stt`). `--no-cache` force de nouvelles requêtes.
-
-### 7. Notation humaine à l'aveugle
+## Évaluation humaine à l'aveugle
 
 ```bash
-python -m xamxam.eval blind --output-dir outputs/benchmark-100
+python -m xamxam.eval blind --output-dir outputs/nouveau-run
 ```
 
-Transmettez aux évaluateurs **seulement** `humain/aveugle/` : la fiche
-`evaluation.csv` et les 300 audios renommés ne montrent ni condition ni texte envoyé au TTS.
-La colonne `texte_de_reference` donne la même phrase de départ pour les trois versions.
-Gardez `humain/correspondance_aveugle.csv` séparé : il relie les échantillons aux conditions.
+Transmettez à chaque évaluateur le contenu de `humain/aveugle/` seulement. La fiche et les audios anonymisés cachent la condition ; `humain/correspondance_aveugle.csv` reste chez l'organisateur. Demandez une note de 1 à 5 pour `note_correction_wolof` et `note_prononciation_termes`, puis les mots problématiques dans `mots_mal_prononces` séparés par `;`. Consignez aussi le nombre de locuteurs, leurs critères et les désaccords avant toute conclusion publique.
 
-Remplissez `note_correction_wolof` et `note_prononciation_termes` de 1 à 5, et
-`mots_mal_prononces` séparés par `;`. Conservez les identifiants et les noms de fichiers.
-Après réception de la fiche annotée :
+Après annotation :
 
 ```bash
-python -m xamxam.eval unblind --output-dir outputs/benchmark-100
+python -m xamxam.eval unblind --output-dir outputs/nouveau-run
+python -m xamxam.eval report --output-dir outputs/nouveau-run
 ```
 
-L'import valide la fiche et remplit `humain/evaluation_humaine.csv`, que `report` utilise.
-Une nouvelle commande `blind` ou `unblind` n'écrase pas les notes existantes sans l'option
-explicite `--overwrite-blind` ou `--overwrite-human`.
+`unblind` importe les notes dans `humain/evaluation_humaine.csv`. Les commandes préservent les fiches déjà remplies sauf demande explicite d'écrasement. Une note vide n'est pas une note nulle : le rapport indique le nombre réel d'évaluations.
 
-### 8. Rapport
+## Lire les mesures
 
-```bash
-python -m xamxam.eval report --output-dir outputs/benchmark-100
-```
+- `stt/transcriptions.csv` : texte effectivement envoyé, transcription, WER et chemin audio. Le WER compare le texte envoyé au TTS et le STT, après tokenisation ; il reflète aussi les variantes orthographiques et les erreurs du STT.
+- `stt/termes.csv` : occurrences ciblées et occurrences absentes de la transcription sous une graphie acceptée. Ce compte n'est pas un jugement humain sur l'intelligibilité.
+- `rapport/formules_stt.csv` : points de deux ou trois lettres, carrés, égalités, additions et racines attendus puis repérés ; les lettres seules sont exclues. `BC`, `B C` et `bee see` sont regroupés, et `15²` est accepté pour « quinze au carré ».
+- `rapport/diagnostic_phrases.csv` : une ligne par phrase, avec les deux conditions transformées, les alertes, transcriptions et chemins audio. Le tri priorise les formules puis les termes manquants dans la version normalisée. Il sert à organiser l'écoute.
+- `rapport/classement_termes.csv` et `rapport/resume.md` : agrégats par terme et par condition, paramètres et nombre de notes humaines.
 
-`outputs/benchmark-100/rapport/resume.md` indique en tête la **langue des nombres** utilisée et
-le **nombre de termes appliqués avec une prononciation validée et avec une prononciation
-brouillon**, puis l'apport de chaque couche (normalisation, lexique) et les termes à améliorer.
-`outputs/benchmark-100/rapport/formules_stt.csv` signale, pour les versions normalisée et lexique,
-les noms de points, carrés, égalités, additions et racines que le STT n'a pas retrouvés. Les
-graphies `BC`, `B C` et `bee see` sont comptées comme le même point ; un « manquant » reste un
-signal du STT et doit être interprété comme tel, car la reconnaissance peut elle-même se tromper.
+Le benchmark mesure **la chaîne de prononciation**, pas le bot WhatsApp complet, l'extraction de photos, la justesse des explications ou l'apprentissage des élèves. Une amélioration STT doit être confirmée par l'écoute de locuteurs avant toute revendication de qualité vocale.
 
-## Remplacer le lexique par le lexique source (307 termes)
+## Publier un nouvel instantané
 
-Le lexique source (schéma `id`, `terme_fr`, `domaine`, `wolof.prononciation`,
-`wolof.valide_par`, `wolof.statut`, `phrases_test`…) se convertit sans perte de champ :
-
-```bash
-python -m xamxam.lexicon convert chemin/vers/lexique_source.json data/lexicon/xam_xam_lexique_v0.json
-```
-
-- Un terme n'est « valide » que si la source le dit **et** fournit une prononciation et un
-  validateur ; sinon il est brouillon (statut d'origine conservé dans `autres`).
-- Un terme sans prononciation reste dans le lexique mais n'est jamais appliqué.
-- Les 30 termes cibles doivent figurer dans le lexique converti (un test le vérifie) : comparez
-  avant d'écraser, puis relancez les étapes 1 à 3.
+Conservez les entrées, le commit du code, `run_info.json`, `stt/transcriptions.csv`, `stt/termes.csv`, les rapports dérivés et les notes humaines agrégées si leur diffusion est autorisée. Calculez des empreintes SHA-256. Évitez de mettre des WAV volumineux dans Git ; si vous les diffusez séparément, vérifiez au préalable les conditions de redistribution du fournisseur et reliez-les aux identifiants du CSV. Ne publiez aucune clé, aucun média d'élève et aucune fiche contenant des données personnelles.

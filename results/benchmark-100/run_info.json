@@ -1,0 +1,48 @@
+{
+  "phrases": 100,
+  "langue_nombres": "fr",
+  "lexique_statut": "brouillon",
+  "termes_appliques": {
+    "brouillon": {
+      "occurrences": 380,
+      "termes": [
+        "alignés",
+        "angle droit",
+        "arrondi",
+        "carré",
+        "centimètres",
+        "contraposée",
+        "côté",
+        "diagonale",
+        "distance",
+        "dixième",
+        "droites parallèles",
+        "hauteur",
+        "hypoténuse",
+        "longueur",
+        "milieu",
+        "mètres",
+        "parallèle",
+        "perpendiculaire",
+        "produit en croix",
+        "proportionnel",
+        "racine carrée",
+        "rapport",
+        "réciproque",
+        "réduction",
+        "segment",
+        "somme",
+        "sommet",
+        "théorème de Pythagore",
+        "théorème de Thalès",
+        "triangle",
+        "triangle rectangle",
+        "égalité"
+      ]
+    },
+    "valide": {
+      "occurrences": 0,
+      "termes": []
+    }
+  }
+}

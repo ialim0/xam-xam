@@ -128,7 +128,7 @@ def write_phrase_diagnostic(
     )
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="") as file:
-        writer = csv.DictWriter(file, fieldnames=columns)
+        writer = csv.DictWriter(file, fieldnames=columns, lineterminator="\n")
         writer.writeheader()
         writer.writerows(rows)
 
@@ -142,7 +142,7 @@ def write_math_feedback(path: Path, records: list[TranscriptionRecord]) -> None:
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="") as file:
-        writer = csv.writer(file)
+        writer = csv.writer(file, lineterminator="\n")
         writer.writerow(("id", "condition", "element", "valeur", "attendu", "reconnu", "manquant"))
         for record in records:
             if record.condition is Condition.RAW:
@@ -168,7 +168,7 @@ def _csv_number(value: float | None) -> str:
 def write_ranking(path: Path, ranking: list[TermStats]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="") as file:
-        writer = csv.writer(file)
+        writer = csv.writer(file, lineterminator="\n")
         writer.writerow(_RANKING_COLUMNS)
         for position, stats in enumerate(ranking, start=1):
             writer.writerow(
