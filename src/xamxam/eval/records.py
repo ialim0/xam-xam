@@ -88,6 +88,10 @@ class OutputPaths:
     def summary_md(self) -> Path:
         return self.root / "rapport" / "resume.md"
 
+    @property
+    def math_feedback_csv(self) -> Path:
+        return self.root / "rapport" / "formules_stt.csv"
+
 
 @dataclass(frozen=True)
 class TranscriptionRecord:

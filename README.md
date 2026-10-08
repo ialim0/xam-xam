@@ -71,6 +71,7 @@ dans `outputs/` (ignoré par Git) :
 | `outputs/humain/evaluation_humaine.csv` | fiche à remplir (notes 1 à 5, mots mal prononcés) |
 | `outputs/rapport/classement_termes.csv` | taux d'erreur par terme et par condition, apport de chaque couche |
 | `outputs/rapport/resume.md` | taux par condition, apport des couches, notes moyennes, termes prioritaires |
+| `outputs/rapport/formules_stt.csv` | points, carrés et opérateurs attendus puis reconnus par le STT |
 
 `run` n'écrase jamais une fiche humaine déjà remplie (option `--overwrite-human` pour forcer).
 
@@ -130,6 +131,12 @@ WhatsApp ─► webhook (signature vérifiée, 200 immédiat)
   messages terminés survivent aux redémarrages dans `/cache/bot-state.sqlite3`. Le chemin peut
   être déplacé avec `XAMXAM_STATE_DIR`. Seuls des identifiants hachés et des horodatages y figurent ;
   aucune question, photo, note vocale ou transcription n'y est écrite.
+- Pour les explications contenant une formule, l'autocontrôle audio peut retranscrire le WAV
+  généré et essayer jusqu'à deux variantes de lecture si des points ou opérateurs manquent.
+  Il n'adopte une variante que si davantage d'éléments sont reconnus sans régression. Il est
+  activé par défaut dans la configuration AWS et configurable via `XAMXAM_AUDIO_SELF_CHECK` ;
+  il consomme des requêtes STT supplémentaires. Le contrôle ne valide pas linguistiquement le
+  lexique.
 - Uniquement des **modèles open source** (Apache 2.0) : Amazon Bedrock en déploiement principal,
   ou un serveur auto-hébergé (vLLM, Ollama). Liste blanche versionnée, comparaison des modèles
   avec `python -m xamxam.eval llm` : voir [docs/modeles.md](docs/modeles.md) et
@@ -140,7 +147,8 @@ WhatsApp ─► webhook (signature vérifiée, 200 immédiat)
 - Les **photos et transcriptions** sont envoyées au **LLM configuré** : Amazon Bedrock dans la
   région indiquée par `BEDROCK_REGION`, ou votre serveur auto-hébergé (`SELFHOSTED_BASE_URL`).
 - Les **notes vocales** sont envoyées au **STT de Kiriku**, les **explications** au **TTS de
-  Kiriku**.
+  Kiriku**. Si l'autocontrôle audio est activé, les audios d'explication sont également envoyés
+  au STT de Kiriku pour vérifier les formules.
 - **Tous les messages** transitent par **WhatsApp (Meta)**.
 - **Aucun contenu envoyé par l'élève** (photo, audio, transcription) **n'est conservé** par
   Xam-Xam après traitement : les médias sont supprimés à la fin de chaque demande et les

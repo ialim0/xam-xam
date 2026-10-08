@@ -22,6 +22,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
+from xamxam.audio_feedback import synthesize_checked
 from xamxam.errors import XamXamError
 from xamxam.llm import LLMProvider, MathSolution, ProblemInput, SolutionStatus
 from xamxam.media import audio_duration, split_audio, wav_to_ogg_opus
@@ -342,9 +343,20 @@ class XamXamBot:
         )
         text = self._pipeline.prepare(explanation).text
         with timed("tts"):
-            wav = await asyncio.to_thread(
-                self._tts.synthesize, text, language=self._settings.language
-            )
+            if self._settings.audio_self_check:
+                checked = await asyncio.to_thread(
+                    synthesize_checked,
+                    explanation,
+                    text,
+                    tts=self._tts,
+                    stt=self._stt,
+                    language=self._settings.language,
+                )
+                wav = checked.audio
+            else:
+                wav = await asyncio.to_thread(
+                    self._tts.synthesize, text, language=self._settings.language
+                )
         with timed("conversion"):
             ogg = await asyncio.to_thread(wav_to_ogg_opus, wav)
         with timed("envoi"):

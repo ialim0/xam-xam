@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from statistics import mean
 
+from xamxam.audio_feedback import check_math_audio
 from xamxam.eval.human import HumanRating, load_human_ratings
 from xamxam.eval.metrics import (
     LAYERS,
@@ -57,9 +58,38 @@ def build_report(paths: OutputPaths) -> Report:
         rank_terms(stats.values()), ratings, transcriptions, RunInfo.read(paths.run_info_json)
     )
     write_ranking(paths.ranking_csv, report.ranking)
+    write_math_feedback(paths.math_feedback_csv, transcriptions)
     paths.summary_md.parent.mkdir(parents=True, exist_ok=True)
     paths.summary_md.write_text(render_summary(report), encoding="utf-8")
     return report
+
+
+def write_math_feedback(path: Path, records: list[TranscriptionRecord]) -> None:
+    """Signale les éléments de formule non retrouvés par le STT, sans confondre BC et bee see."""
+    sources = {
+        record.sentence_id: record.sent_text
+        for record in records
+        if record.condition is Condition.RAW
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as file:
+        writer = csv.writer(file)
+        writer.writerow(("id", "condition", "element", "valeur", "attendu", "reconnu", "manquant"))
+        for record in records:
+            if record.condition is Condition.RAW:
+                continue
+            for check in check_math_audio(sources[record.sentence_id], record.transcript):
+                writer.writerow(
+                    (
+                        record.sentence_id,
+                        record.condition,
+                        check.kind,
+                        check.value,
+                        check.expected,
+                        check.heard,
+                        check.missing,
+                    )
+                )
 
 
 def _csv_number(value: float | None) -> str:
@@ -190,6 +220,37 @@ def render_summary(report: Report) -> str:
                 _percent(relative_improvement(before, after)),
             )
         )
+
+    sources = {
+        record.sentence_id: record.sent_text
+        for record in report.transcriptions
+        if record.condition is Condition.RAW
+    }
+    lines += [
+        "",
+        "## Éléments mathématiques retrouvés par le STT",
+        "",
+        *_table(["Condition", "Éléments reconnus", "Éléments attendus", "Phrases avec manque"]),
+    ]
+    for condition in (Condition.NORMALIZED, Condition.FULL):
+        checks_by_phrase = [
+            check_math_audio(sources[record.sentence_id], record.transcript)
+            for record in report.transcriptions
+            if record.condition is condition
+        ]
+        lines.append(
+            _row(
+                condition.label,
+                sum(check.heard for checks in checks_by_phrase for check in checks),
+                sum(check.expected for checks in checks_by_phrase for check in checks),
+                sum(any(check.missing for check in checks) for checks in checks_by_phrase),
+            )
+        )
+    lines += [
+        "",
+        "Les graphies d'un même nom de point (par exemple `BC` et `bee see`) sont regroupées. "
+        "Un manque signalé par le STT peut aussi venir d'une erreur de reconnaissance.",
+    ]
 
     lines += [
         "",

@@ -49,6 +49,10 @@ def test_bot_settings_from_env() -> None:
     assert settings.user_requests_per_hour == 3
     assert settings.number_language is NumberLanguage.WOLOF
     assert settings.grouping_window_seconds == 8.0
+    assert not settings.audio_self_check
+    assert BotSettings.from_env({"XAMXAM_AUDIO_SELF_CHECK": "true"}).audio_self_check
+    with pytest.raises(XamXamError, match="XAMXAM_AUDIO_SELF_CHECK"):
+        BotSettings.from_env({"XAMXAM_AUDIO_SELF_CHECK": "maybe"})
     with pytest.raises(XamXamError, match="XAMXAM_MAX_EXPLANATION_CHARS"):
         BotSettings.from_env({"XAMXAM_MAX_EXPLANATION_CHARS": "beaucoup"})
 

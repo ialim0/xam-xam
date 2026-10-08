@@ -152,6 +152,10 @@ python -m xamxam.eval report --output-dir outputs/benchmark-100
 `outputs/benchmark-100/rapport/resume.md` indique en tête la **langue des nombres** utilisée et
 le **nombre de termes appliqués avec une prononciation validée et avec une prononciation
 brouillon**, puis l'apport de chaque couche (normalisation, lexique) et les termes à améliorer.
+`outputs/benchmark-100/rapport/formules_stt.csv` signale, pour les versions normalisée et lexique,
+les noms de points, carrés, égalités, additions et racines que le STT n'a pas retrouvés. Les
+graphies `BC`, `B C` et `bee see` sont comptées comme le même point ; un « manquant » reste un
+signal du STT et doit être interprété comme tel, car la reconnaissance peut elle-même se tromper.
 
 ## Remplacer le lexique par le lexique source (307 termes)
 

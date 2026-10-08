@@ -97,6 +97,24 @@ async def test_photo_in_voice_note_out_through_signed_webhook(pipeline: XamXamPi
     assert not set("²=√") & set(spoken)
 
 
+async def test_bot_can_self_check_the_generated_formula(pipeline: XamXamPipeline) -> None:
+    graph = FakeGraph(media={"img-1": (JPEG, "image/jpeg")})
+    stt = FakeSTT("bc au carré égale ab au carré plus ac au carré")
+    tts = RecordingTTS()
+    bot = build_bot(
+        graph,
+        ScriptedLLM([make_solution()]),
+        pipeline=pipeline,
+        stt=stt,
+        tts=tts,
+        settings=BotSettings(grouping_window_seconds=0, audio_self_check=True),
+    )
+    await _deliver(bot, image_message())
+    _assert_explanation_sent(graph)
+    assert stt.received  # le WAV sortant a été contrôlé
+    assert tts.texts
+
+
 async def test_photo_and_voice_note_are_grouped(pipeline: XamXamPipeline) -> None:
     graph = FakeGraph(media={"img-1": (JPEG, "image/jpeg"), "aud-1": (_voice_note(5), "audio/ogg")})
     llm = ScriptedLLM([make_solution()])

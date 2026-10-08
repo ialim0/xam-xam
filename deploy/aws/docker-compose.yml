@@ -22,6 +22,7 @@ services:
       - "*"
     environment:
       XAMXAM_CACHE_DIR: /cache
+      XAMXAM_AUDIO_SELF_CHECK: ${XAMXAM_AUDIO_SELF_CHECK:-true}
       XAMXAM_SECRETS_DIR: /run/secrets/xamxam
     volumes:
       - ${XAMXAM_CACHE_PATH:-/cache}:/cache

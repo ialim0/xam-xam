@@ -111,6 +111,9 @@ def test_run_and_report_end_to_end(tmp_path: Path, caplog: pytest.LogCaptureFixt
     summary = paths.summary_md.read_text(encoding="utf-8")
     assert "Apport de chaque couche" in summary
     assert "Normalisé + lexique" in summary
+    feedback = _read_csv(paths.math_feedback_csv)
+    assert feedback
+    assert {row["condition"] for row in feedback} <= {"normalise", "lexique"}
 
 
 def test_report_without_run_fails_cleanly(tmp_path: Path) -> None:

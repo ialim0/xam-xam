@@ -10,6 +10,15 @@ from xamxam.errors import XamXamError
 from xamxam.normalize import NumberLanguage
 
 
+def _boolean(raw: str) -> bool:
+    value = raw.casefold()
+    if value in {"1", "true", "yes", "oui", "on"}:
+        return True
+    if value in {"0", "false", "no", "non", "off"}:
+        return False
+    raise ValueError(raw)
+
+
 @dataclass(frozen=True)
 class BotSettings:
     # Attente après le premier message pour regrouper photo et note vocale.
@@ -24,6 +33,8 @@ class BotSettings:
     max_audio_seconds: float = 120.0
     language: str = "wo"
     number_language: NumberLanguage = NumberLanguage.FRENCH
+    # Vérifie les formules de l'audio généré par STT et tente au plus deux variantes.
+    audio_self_check: bool = False
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> BotSettings:
@@ -35,6 +46,7 @@ class BotSettings:
             "XAMXAM_MAX_EXPLANATION_CHARS": ("max_explanation_chars", int),
             "XAMXAM_USER_REQUESTS_PER_HOUR": ("user_requests_per_hour", int),
             "XAMXAM_NUMBER_LANGUAGE": ("number_language", NumberLanguage),
+            "XAMXAM_AUDIO_SELF_CHECK": ("audio_self_check", _boolean),
         }
         for variable, (attribute, convert) in conversions.items():
             raw = env.get(variable, "").strip()
