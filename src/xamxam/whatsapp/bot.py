@@ -153,6 +153,10 @@ class XamXamBot:
         # téléversé une fois, puis réutilisé par son identifiant de média.
         self._waiting_sticker = waiting_sticker
         self._sticker_media_id: str | None = None
+        # Note vocale « Néggal tuuti » qui accompagne toujours l'autocollant : synthétisée
+        # une fois (cache TTS sur disque, puis OGG en mémoire), téléversée une fois chez Meta.
+        self._waiting_audio: bytes | None = None
+        self._waiting_audio_media_id: str | None = None
         # Sans Kiriku (stt/tts None), l'agent répond en texte et ne transcrit pas les audios.
         self._llm = llm
         self._agent = agent
@@ -257,6 +261,8 @@ class XamXamBot:
             first = burst.messages[0]
             await self._typing(first.message_id)
             waiting_shown = await self._send_waiting_sticker(sender)
+            if waiting_shown:
+                await self._send_waiting_audio(sender)
             if not waiting_shown and first.kind in (MessageKind.IMAGE, MessageKind.AUDIO):
                 # Sans autocollant : photo ou audio prennent du temps, l'élève est prévenu.
                 await self._reply(sender, self._messages.ack)
@@ -296,6 +302,25 @@ class XamXamBot:
                 if attempt == 2:
                     logger.warning("Autocollant d'attente impossible (%s).", type(exc).__name__)
         return False
+
+    async def _send_waiting_audio(self, sender: str) -> None:
+        """Note vocale d'attente après l'autocollant, quel que soit le mode, jamais bloquante."""
+        if self._tts is None:
+            return
+        for attempt in (1, 2):
+            try:
+                if self._waiting_audio is None:
+                    self._waiting_audio = await self._speak(self._messages.waiting_audio)
+                if self._waiting_audio_media_id is None:
+                    self._waiting_audio_media_id = await self._meta.upload_media(
+                        self._waiting_audio, "audio/ogg", "attente.ogg"
+                    )
+                await self._meta.send_audio(sender, self._waiting_audio_media_id)
+                return
+            except XamXamError as exc:
+                self._waiting_audio_media_id = None
+                if attempt == 2:
+                    logger.warning("Note vocale d'attente impossible (%s).", type(exc).__name__)
 
     async def _typing(self, message_id: str) -> None:
         try:

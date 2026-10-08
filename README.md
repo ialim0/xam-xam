@@ -73,7 +73,7 @@ Il faut deux comptes gratuits : une **clé Gemini** ([Google AI Studio](https://
 
 ### Comment l'agent répond
 
-Dès qu'un message arrive, l'élève reçoit l'autocollant animé « Néggal tuuti » (patiente un peu) pendant le traitement (`XAMXAM_WAITING_STICKER=false` pour le retirer). Par défaut, l'élève ne reçoit **que des notes vocales en wolof** : salutations, explications, accusés de réception et messages d'erreur. Le texte ne sert qu'en secours, si la synthèse Kiriku échoue. Sans Kiriku, ou avec `XAMXAM_REPLY_MODE=texte`, le bot répond par écrit et propose des boutons (« 🔊 Écouter », « 🎬 Vidéo », « ✅ Compris »).
+Dès qu'un message arrive, l'élève reçoit l'autocollant animé « Néggal tuuti » (patiente un peu) pendant le traitement, suivi, quel que soit le mode, d'une note vocale « Néggal tuuti, maa ngi koy xool » générée une seule fois puis réutilisée (cache TTS sur disque, média gardé chez Meta ; texte modifiable via la clé `waiting_audio` de `XAMXAM_MESSAGES_PATH`). `XAMXAM_WAITING_STICKER=false` retire les deux. Par défaut, l'élève ne reçoit **que des notes vocales en wolof** : salutations, explications, accusés de réception et messages d'erreur. Le texte ne sert qu'en secours, si la synthèse Kiriku échoue. Sans Kiriku, ou avec `XAMXAM_REPLY_MODE=texte`, le bot répond par écrit et propose des boutons (« 🔊 Écouter », « 🎬 Vidéo », « ✅ Compris »).
 
 À chaque message, l'agent choisit lui-même ses outils : résoudre l'exercice (lecture de la photo, vérification SymPy), envoyer une note vocale, lancer une vidéo, et en mode texte écrire ou proposer des boutons.
 

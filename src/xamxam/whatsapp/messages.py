@@ -19,6 +19,8 @@ class BotMessages:
     # Les réponses de la conversation sont rédigées par l'agent ; ces textes fixes couvrent
     # les cas traités sans lui (accusé, limites, erreurs, vidéo).
     ack: str = "Jërëjëf ! Jot naa sa laaj bi, maa ngi koy xool. Xaaral ma tuuti."
+    # Note vocale envoyée avec l'autocollant d'attente, générée une seule fois.
+    waiting_audio: str = "Néggal tuuti, maa ngi koy xool."
     wait_notice: str = (
         "Ñu bari ñoo ngi laaj fi léegi. Sa tontu dina yàgg tuuti : xaaral ma, dinaa la tontu."
     )

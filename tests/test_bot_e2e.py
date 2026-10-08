@@ -871,14 +871,16 @@ async def test_waiting_sticker_is_sent_for_every_message_and_uploaded_once(
     await _deliver(bot, text_message("salut", "w1"))
     await _deliver(bot, image_message("w2"))
 
-    # L'autocollant part avant chaque réponse et remplace l'accusé de réception.
-    assert graph.kinds == ["sticker", "text", "sticker", "text"]
+    # L'autocollant et « Néggal tuuti » partent avant chaque réponse, même en mode texte,
+    # et remplacent l'accusé de réception.
+    assert graph.kinds == ["sticker", "audio", "text", "sticker", "audio", "text"]
     assert graph.texts == ["un", "deux"]
     assert [m["sticker"]["id"] for m in graph.sent if m["type"] == "sticker"] == [
         "upload-1",
         "upload-1",
     ]
-    assert [STICKER in upload for upload in graph.uploads] == [True]  # téléversé une fois
+    # Autocollant et note vocale téléversés une seule fois chacun.
+    assert [STICKER in upload for upload in graph.uploads] == [True, False]
 
 
 async def test_expired_sticker_is_uploaded_again_or_replaced_by_the_ack(
@@ -894,7 +896,7 @@ async def test_expired_sticker_is_uploaded_again_or_replaced_by_the_ack(
     )
     await _deliver(bot, text_message("salut"))
     # Premier identifiant refusé (expiré) : nouveau téléversement, puis envoi réussi.
-    assert graph.kinds == ["sticker", "text"]
+    assert graph.kinds == ["sticker", "audio", "text"]
     assert graph.sent[0]["sticker"]["id"] == "upload-2"
 
     graph = FakeGraph(
@@ -908,8 +910,36 @@ async def test_expired_sticker_is_uploaded_again_or_replaced_by_the_ack(
         waiting_sticker=STICKER,
     )
     await _deliver(bot, image_message())
-    # Autocollant impossible : l'accusé de réception habituel le remplace.
+    # Autocollant impossible : l'accusé de réception habituel le remplace, sans note d'attente.
     assert graph.texts == [MESSAGES.ack, "ok"]
+    assert "audio" not in graph.kinds
+
+
+async def test_audio_mode_adds_a_cached_waiting_voice_note_to_the_sticker(
+    pipeline: XamXamPipeline,
+) -> None:
+    graph = FakeGraph()
+    tts = RecordingTTS()
+    bot = build_bot(
+        graph,
+        ScriptedLLM([]),
+        pipeline=pipeline,
+        tts=tts,
+        agent=ScriptedAgentModel([say("un"), say("deux")]),
+        waiting_sticker=STICKER,
+        settings=AUDIO,
+    )
+
+    await _deliver(bot, text_message("salut", "w1"))
+    await _deliver(bot, text_message("encore", "w2"))
+
+    # Autocollant puis « Néggal tuuti » à chaque message, avant la réponse.
+    assert graph.kinds == ["sticker", "audio", "audio", "sticker", "audio", "audio"]
+    waiting = [m["audio"]["id"] for m in graph.sent if m["type"] == "audio"][::2]
+    assert waiting[0] == waiting[1]  # même média réutilisé
+    # Synthétisée une seule fois : seules les deux réponses passent ensuite par la TTS.
+    assert sum(text.startswith("Néggal tuuti") for text in tts.texts) == 1
+    assert len(tts.texts) == 3
 
 
 def test_packaged_waiting_sticker_follows_whatsapp_rules() -> None:
