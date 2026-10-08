@@ -114,6 +114,10 @@ def test_run_and_report_end_to_end(tmp_path: Path, caplog: pytest.LogCaptureFixt
     feedback = _read_csv(paths.math_feedback_csv)
     assert feedback
     assert {row["condition"] for row in feedback} <= {"normalise", "lexique"}
+    diagnostic = _read_csv(paths.phrase_diagnostic_csv)
+    assert len(diagnostic) == 5
+    assert {row["id"] for row in diagnostic} == {"P001", "P002", "P003", "T001", "C001"}
+    assert all(row["transcription_normalise"] for row in diagnostic)
 
 
 def test_report_without_run_fails_cleanly(tmp_path: Path) -> None:

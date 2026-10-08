@@ -31,7 +31,9 @@ _HEARD_ROOT = re.compile(r"(?<!\w)racine(?:\s+carree)?(?!\w)")
 
 
 def _fold(text: str) -> str:
-    decomposed = unicodedata.normalize("NFKD", text.casefold())
+    # Le STT peut écrire « 15² » alors que le TTS a dit « quinze au carré ».
+    text = re.sub(r"\^\s*2", " au carre ", text.casefold().replace("²", " au carre "))
+    decomposed = unicodedata.normalize("NFKD", text)
     plain = "".join(char for char in decomposed if not unicodedata.combining(char))
     return re.sub(r"\s+", " ", re.sub(r"[-’']", " ", plain)).strip()
 

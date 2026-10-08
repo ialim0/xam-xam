@@ -226,7 +226,12 @@ def _audio(args: argparse.Namespace) -> None:
 def _report(args: argparse.Namespace) -> None:
     paths = OutputPaths(args.output_dir)
     build_report(paths)
-    logger.info("Rapport écrit : %s et %s", paths.ranking_csv, paths.summary_md)
+    logger.info(
+        "Rapport écrit : %s, %s et %s",
+        paths.ranking_csv,
+        paths.phrase_diagnostic_csv,
+        paths.summary_md,
+    )
 
 
 def _check(args: argparse.Namespace) -> bool:

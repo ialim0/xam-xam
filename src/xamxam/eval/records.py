@@ -92,6 +92,10 @@ class OutputPaths:
     def math_feedback_csv(self) -> Path:
         return self.root / "rapport" / "formules_stt.csv"
 
+    @property
+    def phrase_diagnostic_csv(self) -> Path:
+        return self.root / "rapport" / "diagnostic_phrases.csv"
+
 
 @dataclass(frozen=True)
 class TranscriptionRecord:

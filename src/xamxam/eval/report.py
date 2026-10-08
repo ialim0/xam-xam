@@ -25,6 +25,7 @@ from xamxam.eval.records import (
     Condition,
     OutputPaths,
     RunInfo,
+    TermRecord,
     TranscriptionRecord,
     read_terms,
     read_transcriptions,
@@ -53,15 +54,83 @@ def build_report(paths: OutputPaths) -> Report:
     """Lit les résultats de `run` (et la fiche humaine si elle existe), puis écrit le rapport."""
     transcriptions = read_transcriptions(paths.transcriptions_csv)
     ratings = load_human_ratings(paths.human_csv)
-    stats = compute_term_stats(read_terms(paths.terms_csv), ratings)
+    terms = read_terms(paths.terms_csv)
+    stats = compute_term_stats(terms, ratings)
     report = Report(
         rank_terms(stats.values()), ratings, transcriptions, RunInfo.read(paths.run_info_json)
     )
     write_ranking(paths.ranking_csv, report.ranking)
     write_math_feedback(paths.math_feedback_csv, transcriptions)
+    write_phrase_diagnostic(paths.phrase_diagnostic_csv, transcriptions, terms)
     paths.summary_md.parent.mkdir(parents=True, exist_ok=True)
     paths.summary_md.write_text(render_summary(report), encoding="utf-8")
     return report
+
+
+def write_phrase_diagnostic(
+    path: Path, records: list[TranscriptionRecord], terms: list[TermRecord]
+) -> None:
+    """Classe les phrases selon les indices STT, pour orienter l'écoute humaine."""
+    by_id = {(record.sentence_id, record.condition): record for record in records}
+    term_rows: dict[tuple[str, Condition], list[TermRecord]] = {}
+    for term in terms:
+        term_rows.setdefault((term.sentence_id, term.condition), []).append(term)
+
+    columns = ["id", "texte_source"]
+    for condition in (Condition.NORMALIZED, Condition.FULL):
+        suffix = str(condition)
+        columns.extend(
+            (
+                f"elements_formule_non_reperes_stt_{suffix}",
+                f"details_formule_{suffix}",
+                f"termes_non_reperes_stt_{suffix}",
+                f"details_termes_{suffix}",
+                f"wer_{suffix}",
+                f"transcription_{suffix}",
+                f"audio_{suffix}",
+            )
+        )
+
+    rows: list[dict[str, object]] = []
+    for raw in records:
+        if raw.condition is not Condition.RAW:
+            continue
+        row: dict[str, object] = {"id": raw.sentence_id, "texte_source": raw.sent_text}
+        for condition in (Condition.NORMALIZED, Condition.FULL):
+            record = by_id[(raw.sentence_id, condition)]
+            checks = check_math_audio(raw.sent_text, record.transcript)
+            missed_terms = [
+                term for term in term_rows.get((raw.sentence_id, condition), []) if term.errors
+            ]
+            suffix = str(condition)
+            row[f"elements_formule_non_reperes_stt_{suffix}"] = sum(
+                check.missing for check in checks
+            )
+            row[f"details_formule_{suffix}"] = "; ".join(
+                f"{check.kind} {check.value} x{check.missing}" for check in checks if check.missing
+            )
+            row[f"termes_non_reperes_stt_{suffix}"] = sum(term.errors for term in missed_terms)
+            row[f"details_termes_{suffix}"] = "; ".join(
+                f"{term.term} x{term.errors}" for term in missed_terms
+            )
+            row[f"wer_{suffix}"] = f"{record.wer:.4f}"
+            row[f"transcription_{suffix}"] = record.transcript
+            row[f"audio_{suffix}"] = record.audio_file
+        rows.append(row)
+
+    rows.sort(
+        key=lambda row: (
+            -int(row["elements_formule_non_reperes_stt_normalise"]),
+            -int(row["termes_non_reperes_stt_normalise"]),
+            -float(row["wer_normalise"]),
+            str(row["id"]),
+        )
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=columns)
+        writer.writeheader()
+        writer.writerows(rows)
 
 
 def write_math_feedback(path: Path, records: list[TranscriptionRecord]) -> None:
@@ -305,5 +374,11 @@ def render_summary(report: Report) -> str:
                 *(_points(stats.layer_gain(layer)) for layer in LAYERS),
             )
         )
-    lines += ["", "Classement complet : `rapport/classement_termes.csv`.", ""]
+    lines += [
+        "",
+        "Classement complet : `rapport/classement_termes.csv`.",
+        "Diagnostic des phrases : `rapport/diagnostic_phrases.csv`, classé par éléments "
+        "mathématiques puis termes non repérés par le STT dans la version normalisée.",
+        "",
+    ]
     return "\n".join(lines)

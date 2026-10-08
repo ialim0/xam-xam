@@ -18,6 +18,11 @@ def test_missing_formula_elements_are_detected() -> None:
     assert missing == {("carre", "carre"): 2, ("egal", "egal"): 1}
 
 
+def test_stt_superscript_counts_as_spoken_square() -> None:
+    checks = check_math_audio("3² + 4² = 5²", "3² plus 4² égale 5²")
+    assert all(check.missing == 0 for check in checks)
+
+
 def test_self_check_selects_variant_only_when_anchors_improve() -> None:
     tts = MockTTSProvider()
     stt = MockSTTProvider(
