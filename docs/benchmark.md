@@ -101,6 +101,22 @@ coupé avant de lancer les 100 phrases.
 python -m xamxam.eval run --output-dir outputs/benchmark-100
 ```
 
+Pour commencer directement par l'écoute humaine sans consommer de quota STT, générez seulement
+les 300 WAV (trois conditions par phrase) :
+
+```bash
+python -m xamxam.eval audio --provider kvicc --lexique-statut brouillon \
+  --output-dir outputs/benchmark-100
+python -m xamxam.eval blind --output-dir outputs/benchmark-100
+```
+
+Le fichier `audio/manifest.csv` indexe les WAV ; la commande `blind` fonctionne sans
+transcriptions. Le mode `brouillon` applique les propositions non validées : les notes portent
+donc sur des **candidates**, pas sur un lexique approuvé. Pour obtenir ensuite les métriques STT
+et le rapport complet, lancez `run` avec les **mêmes options** (`--provider kvicc`,
+`--lexique-statut brouillon`, `--output-dir outputs/benchmark-100`) : les WAV viennent du cache,
+et les notes humaines déjà saisies sont conservées.
+
 Un `run` interrompu peut être relancé : les audios et transcriptions déjà obtenus viennent du
 cache (`.cache/tts`, `.cache/stt`). `--no-cache` force de nouvelles requêtes.
 

@@ -117,6 +117,66 @@ def test_report_without_run_fails_cleanly(tmp_path: Path) -> None:
     assert main(["report", "--output-dir", str(tmp_path)]) == 1
 
 
+def test_audio_only_creates_blind_sheet_without_stt(tmp_path: Path) -> None:
+    paths = OutputPaths(tmp_path / "outputs")
+    args = ["--output-dir", str(paths.root)]
+    assert (
+        main(
+            [
+                "audio",
+                "--sentences",
+                str(SENTENCES_PATH),
+                "--lexicon",
+                str(LEXICON_PATH),
+                "--provider",
+                "mock",
+                "--cache-dir",
+                str(tmp_path / "cache"),
+                "--lexique-statut",
+                "brouillon",
+                *args,
+            ]
+        )
+        == 0
+    )
+    assert len(_read_csv(paths.audio_manifest_csv)) == 15
+    assert not paths.transcriptions_csv.exists()
+    assert len(_read_csv(paths.human_csv)) == 15
+    assert main(["blind", *args]) == 0
+    blind_rows = _read_csv(paths.blind_csv)
+    assert len(blind_rows) == 15
+    blind_rows[0]["note_correction_wolof"] = "4"
+    with paths.blind_csv.open("w", encoding="utf-8", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=blind_rows[0].keys())
+        writer.writeheader()
+        writer.writerows(blind_rows)
+    assert main(["unblind", *args]) == 0
+    assert main(["report", *args]) == 1  # le rapport exige toujours les résultats STT
+    assert (
+        main(
+            [
+                "run",
+                "--sentences",
+                str(SENTENCES_PATH),
+                "--lexicon",
+                str(LEXICON_PATH),
+                "--provider",
+                "mock",
+                "--lexique-statut",
+                "brouillon",
+                "--cache-dir",
+                str(tmp_path / "cache"),
+                *args,
+            ]
+        )
+        == 0
+    )
+    assert main(["report", *args]) == 0
+    assert "Lignes annotées par des évaluateurs humains : 1" in paths.summary_md.read_text(
+        encoding="utf-8"
+    )
+
+
 def test_blind_human_rating_round_trip(tmp_path: Path) -> None:
     out = tmp_path / "outputs"
     args = ["--output-dir", str(out)]

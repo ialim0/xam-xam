@@ -39,6 +39,7 @@ pip install -e ".[dev]"
 pytest                          # tous les tests passent sans aucune clé (provider mock)
 python -m xamxam.lexicon        # valide le lexique et signale les caractères ignorés par le TTS
 python -m xamxam.eval check     # contrôle le jeu de 100 phrases du benchmark
+python -m xamxam.eval audio     # génère les 300 WAV sans appels STT
 python -m xamxam.eval run       # audios des 3 conditions, aller-retour STT, fiche d'évaluation humaine
 python -m xamxam.eval blind     # fiche et audios anonymisés pour la notation humaine
 python -m xamxam.eval unblind   # réintègre les notes après évaluation

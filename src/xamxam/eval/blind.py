@@ -10,7 +10,13 @@ import shutil
 from pathlib import Path
 
 from xamxam.eval.human import HUMAN_COLUMNS, HumanEvalError, load_human_ratings
-from xamxam.eval.records import Condition, OutputPaths, read_transcriptions
+from xamxam.eval.records import (
+    Condition,
+    OutputPaths,
+    TranscriptionRecord,
+    read_audio_manifest,
+    read_transcriptions,
+)
 
 BLIND_COLUMNS = (
     "echantillon",
@@ -22,6 +28,16 @@ BLIND_COLUMNS = (
     "commentaire",
 )
 MAP_COLUMNS = ("echantillon", "id", "condition", "sha256_audio")
+
+
+def _records(paths: OutputPaths) -> list[TranscriptionRecord]:
+    manifest = paths.audio_manifest_csv
+    transcriptions = paths.transcriptions_csv
+    if transcriptions.is_file() and (
+        not manifest.is_file() or transcriptions.stat().st_mtime_ns >= manifest.stat().st_mtime_ns
+    ):
+        return read_transcriptions(paths.transcriptions_csv)
+    return read_audio_manifest(manifest)
 
 
 def _audio_hash(path: Path) -> str:
@@ -55,7 +71,7 @@ def create_blind_sheet(
         raise HumanEvalError(
             "Fiche aveugle déjà présente : utilisez --overwrite-blind pour la recréer."
         )
-    records = read_transcriptions(paths.transcriptions_csv)
+    records = _records(paths)
     if not records:
         raise HumanEvalError("Aucun audio à évaluer.")
     shuffled = records.copy()
@@ -100,10 +116,7 @@ def import_blind_sheet(paths: OutputPaths, *, overwrite_human: bool = False) -> 
     }
     if len(mapping) != len(mapping_rows):
         raise HumanEvalError("Correspondance aveugle : échantillon en double.")
-    by_key = {
-        (record.sentence_id, str(record.condition)): record
-        for record in read_transcriptions(paths.transcriptions_csv)
-    }
+    by_key = {(record.sentence_id, str(record.condition)): record for record in _records(paths)}
     mapped_keys = {(sentence_id, condition) for sentence_id, condition, _ in mapping.values()}
     if len(mapping) != len(by_key) or mapped_keys != set(by_key):
         raise HumanEvalError("Correspondance aveugle incomplète pour ce run.")

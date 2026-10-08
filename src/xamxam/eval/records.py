@@ -53,6 +53,10 @@ class OutputPaths:
         return self.root / "stt" / "transcriptions.csv"
 
     @property
+    def audio_manifest_csv(self) -> Path:
+        return self.root / "audio" / "manifest.csv"
+
+    @property
     def terms_csv(self) -> Path:
         return self.root / "stt" / "termes.csv"
 
@@ -112,6 +116,7 @@ _TRANSCRIPTION_COLUMNS = (
     "wer",
     "fichier_audio",
 )
+_AUDIO_COLUMNS = ("id", "condition", "texte_envoye", "fichier_audio")
 _TERM_COLUMNS = ("id", "condition", "terme", "apparitions", "erreurs")
 
 
@@ -143,6 +148,33 @@ def write_transcriptions(path: Path, records: Iterable[TranscriptionRecord]) -> 
             for r in records
         ),
     )
+
+
+def write_audio_manifest(path: Path, records: Iterable[TranscriptionRecord]) -> None:
+    """Indexe les audios produits sans inventer de résultat STT."""
+    _write_rows(
+        path,
+        _AUDIO_COLUMNS,
+        ((r.sentence_id, r.condition, r.sent_text, r.audio_file) for r in records),
+    )
+
+
+def read_audio_manifest(path: Path) -> list[TranscriptionRecord]:
+    """Fournit les champs nécessaires aux fiches humaines depuis un lot TTS seul."""
+    try:
+        return [
+            TranscriptionRecord(
+                sentence_id=row["id"],
+                condition=Condition(row["condition"]),
+                sent_text=row["texte_envoye"],
+                transcript="",
+                wer=0.0,
+                audio_file=row["fichier_audio"],
+            )
+            for row in _read_rows(path, _AUDIO_COLUMNS)
+        ]
+    except ValueError as exc:
+        raise RecordsError(f"{path} : valeur invalide ({exc})") from exc
 
 
 def read_transcriptions(path: Path) -> list[TranscriptionRecord]:

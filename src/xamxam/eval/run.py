@@ -15,6 +15,7 @@ from xamxam.eval.records import (
     OutputPaths,
     TermRecord,
     TranscriptionRecord,
+    write_audio_manifest,
     write_terms,
     write_transcriptions,
 )
@@ -30,6 +31,12 @@ class RunResult:
     transcriptions: tuple[TranscriptionRecord, ...]
     terms: tuple[TermRecord, ...]
     # Statut de prononciation → termes réécrits par le lexique (condition « lexique »).
+    applied: dict[str, AppliedTerms]
+
+
+@dataclass(frozen=True)
+class AudioResult:
+    records: tuple[TranscriptionRecord, ...]
     applied: dict[str, AppliedTerms]
 
 
@@ -66,6 +73,46 @@ def _texts(prepared: PreparedText) -> dict[Condition, str]:
         Condition.NORMALIZED: prepared.normalized,
         Condition.FULL: prepared.text,
     }
+
+
+def generate_audio(
+    sentences: Sequence[Sentence],
+    *,
+    pipeline: XamXamPipeline,
+    tts: TTSProvider,
+    paths: OutputPaths,
+    text_column: TextColumn = "wo",
+) -> AudioResult:
+    """Produit les trois audios par phrase et leur index, sans appeler le STT."""
+    paths.audio_dir.mkdir(parents=True, exist_ok=True)
+    records: list[TranscriptionRecord] = []
+    applied_occurrences: Counter[str] = Counter()
+    applied_terms: dict[str, set[str]] = defaultdict(set)
+    for sentence in sentences:
+        prepared = pipeline.prepare(sentence.text(text_column))
+        for replacement in prepared.replacements:
+            applied_occurrences[replacement.status] += 1
+            applied_terms[replacement.status].add(replacement.term)
+        for condition, text in _texts(prepared).items():
+            audio_path = paths.audio_file(sentence.id, condition)
+            audio_path.write_bytes(tts.synthesize(text, language=text_column))
+            records.append(
+                TranscriptionRecord(
+                    sentence.id,
+                    condition,
+                    text,
+                    "",
+                    0.0,
+                    audio_path.relative_to(paths.root).as_posix(),
+                )
+            )
+        write_audio_manifest(paths.audio_manifest_csv, records)
+        logger.info("Phrase %s : trois audios prêts.", sentence.id)
+    applied = {
+        str(status): AppliedTerms(applied_occurrences[status], tuple(sorted(applied_terms[status])))
+        for status in TermStatus
+    }
+    return AudioResult(tuple(records), applied)
 
 
 def run_evaluation(

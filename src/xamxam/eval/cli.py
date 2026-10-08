@@ -20,7 +20,7 @@ from xamxam.eval.dataset import DatasetError, load_sentences
 from xamxam.eval.human import write_human_template
 from xamxam.eval.records import OutputPaths, RunInfo
 from xamxam.eval.report import build_report
-from xamxam.eval.run import run_evaluation
+from xamxam.eval.run import generate_audio, run_evaluation
 from xamxam.lexicon import VALIDATED_AND_DRAFT, VALIDATED_ONLY
 from xamxam.normalize import NumberLanguage
 from xamxam.pipeline import XamXamPipeline
@@ -29,6 +29,7 @@ from xamxam.providers import (
     CachedTTSProvider,
     ProviderName,
     create_providers,
+    create_tts_provider,
 )
 
 logger = logging.getLogger("xamxam.eval")
@@ -88,6 +89,24 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Recrée la fiche d'évaluation humaine même si elle existe (annotations perdues).",
     )
+
+    audio = commands.add_parser(
+        "audio", help="Génère les trois WAV par phrase sans appeler le STT."
+    )
+    audio.add_argument("--sentences", type=Path, default=DEFAULT_SENTENCES_PATH)
+    audio.add_argument("--lexicon", type=Path, default=DEFAULT_LEXICON_PATH)
+    audio.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
+    audio.add_argument("--cache-dir", type=Path, default=DEFAULT_TTS_CACHE_DIR)
+    audio.add_argument(
+        "--provider", type=ProviderName, choices=list(ProviderName), default=ProviderName.AUTO
+    )
+    audio.add_argument(
+        "--number-language",
+        type=NumberLanguage,
+        choices=list(NumberLanguage),
+        default=NumberLanguage.FRENCH,
+    )
+    audio.add_argument("--lexique-statut", choices=("valide", "brouillon"), default="valide")
 
     check = commands.add_parser("check", help="Contrôle le jeu de phrases du benchmark.")
     check.add_argument("--sentences", type=Path, default=DEFAULT_SENTENCES_PATH)
@@ -175,6 +194,35 @@ def _run(args: argparse.Namespace) -> None:
     )
 
 
+def _audio(args: argparse.Namespace) -> None:
+    paths = OutputPaths(args.output_dir)
+    tts = CachedTTSProvider(create_tts_provider(args.provider, Settings.from_env()), args.cache_dir)
+    sentences = load_sentences(args.sentences)
+    statuses = VALIDATED_AND_DRAFT if args.lexique_statut == "brouillon" else VALIDATED_ONLY
+    result = generate_audio(
+        sentences,
+        pipeline=XamXamPipeline.from_lexicon_file(
+            args.lexicon, number_language=args.number_language, applied_statuses=statuses
+        ),
+        tts=tts,
+        paths=paths,
+    )
+    RunInfo(
+        sentences=len(sentences),
+        number_language=str(args.number_language),
+        lexicon_status=args.lexique_statut,
+        applied=result.applied,
+    ).write(paths.run_info_json)
+    write_human_template(result.records, paths.human_csv)
+    logger.info(
+        "%d audios prêts dans %s (cache : %d réutilisés, %d générés).",
+        len(result.records),
+        paths.audio_dir,
+        tts.hits,
+        tts.misses,
+    )
+
+
 def _report(args: argparse.Namespace) -> None:
     paths = OutputPaths(args.output_dir)
     build_report(paths)
@@ -236,6 +284,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         if args.command == "run":
             _run(args)
+        elif args.command == "audio":
+            _audio(args)
         elif args.command == "llm":
             _llm(args)
         elif args.command == "check":
