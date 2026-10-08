@@ -16,29 +16,19 @@ from xamxam.errors import XamXamError
 
 @dataclass(frozen=True)
 class BotMessages:
+    # Les réponses de la conversation sont rédigées par l'agent ; ces textes fixes couvrent
+    # les cas traités sans lui (accusé, limites, erreurs, vidéo).
     ack: str = "Jërëjëf ! Jot naa sa laaj bi, maa ngi koy xool. Xaaral ma tuuti."
     wait_notice: str = (
         "Ñu bari ñoo ngi laaj fi léegi. Sa tontu dina yàgg tuuti : xaaral ma, dinaa la tontu."
     )
-    unreadable_image: str = (
-        "Mënuma jàng nataal bi bu baax. Yónnee ma beneen nataal bu leer, bu wone exercice bi yépp."
-    )
-    off_topic: str = (
-        "Nataal bi du exercice bu mathématiques. Yónnee ma nataalu exercice bi, "
-        "walla nga laaj ma ci kàddu."
-    )
-    apology: str = (
-        "Baal ma, mënuma wóoral tontu bi léegi. Jéemaatal ci kanam, walla laajal sa jàngalekat."
-    )
     audio_too_long: str = "Sa kàddu gi dafa gudd lool. Yónnee ma kàddu gu gàttee ñaari simili."
     text_too_long: str = "Votre message est trop long. Envoyez une question plus courte."
     rate_limited: str = "Laaj nga lu bari ci waxtu wii. Jéemaatal ci kanam, ba beneen yoon."
-    help: str = (
-        "Asalaa maalekum ! Yónnee ma nataalu exercice bi, walla kàddu (note vocale), "
-        "ma leral la ko. Vous pouvez aussi écrire votre question de maths."
-    )
     error: str = "Am na jafe-jafe. Baal ma, jéemaatal ci kanam."
-    final_answer: str = "Tontu bi : {answer}"
+    video_caption: str = "Vidéo Xam-Xam : {title}"
+    video_link: str = "Sa vidéo mi ngi : {link}"
+    video_failed: str = "Baal ma, mënuma defar vidéo bi léegi. Laajal ma ko ci kanam."
 
     @classmethod
     def from_json_file(cls, path: str | Path) -> BotMessages:

@@ -1,13 +1,17 @@
-"""Orchestration du bot : de la photo ou de la note vocale à l'explication vocale en wolof.
+"""Orchestration du bot : un agent tuteur conversationnel sur WhatsApp.
 
-Flux d'une demande :
-1. accusé de réception dès le premier message, puis attente pour regrouper photo et audio ;
-2. téléchargement des médias dans un dossier temporaire, supprimé à la fin ;
-3. transcription des notes vocales (découpées par 60 s, 120 s au plus) ;
-4. résolution par le LLM, vérification sympy (Pythagore, Thalès), une correction au plus ;
-5. Xam-Xam (normalisation, lexique), TTS, conversion OGG Opus, envoi de la note vocale
-   puis de la réponse finale en texte.
-Les logs ne contiennent que des identifiants hachés et des métriques.
+Flux d'un message (ou d'un groupe de messages rapprochés) :
+1. coche bleue et « en train d'écrire », accusé de réception pour une photo ou un audio ;
+2. attente courte pour regrouper photo, note vocale et texte ;
+3. téléchargement des médias dans un dossier temporaire supprimé à la fin, transcription
+   des notes vocales par Kiriku (découpées par 60 s, 120 s au plus) ;
+4. boucle d'agent (Gemini + outils) : il répond en texte, résout l'exercice (Gemini lit la
+   photo, SymPy vérifie Pythagore et Thalès), envoie une note vocale, propose des boutons,
+   ou lance de lui-même une vidéo TimaLens quand l'élève ne comprend pas.
+
+Mémoire : derniers échanges en texte, en mémoire vive, oubliés après une heure d'inactivité ;
+aucune photo ni aucun audio d'élève n'est conservé. Les logs ne contiennent que des
+identifiants hachés et des métriques.
 """
 
 from __future__ import annotations
@@ -16,12 +20,25 @@ import asyncio
 import json
 import logging
 import math
+import re
 import time
 from collections.abc import Coroutine, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
+from xamxam.agent import (
+    TOOL_DECLARATIONS,
+    AgentModel,
+    AgentState,
+    Conversation,
+    ConversationMemory,
+    build_agent_prompt,
+    history_messages,
+    run_agent,
+)
+from xamxam.agent.memory import STUDENT, TUTOR
+from xamxam.agent.prompt import CREATE_VIDEO, OFFER_BUTTONS, SEND_AUDIO, SEND_TEXT, SOLVE
 from xamxam.audio_feedback import synthesize_checked
 from xamxam.errors import XamXamError
 from xamxam.llm import LLMProvider, MathSolution, ProblemInput, SolutionStatus
@@ -30,6 +47,7 @@ from xamxam.metrics import JobMetrics, timed, tracking
 from xamxam.pipeline import XamXamPipeline
 from xamxam.providers import RateLimiter, STTProvider, TTSProvider
 from xamxam.providers.kvicc import MAX_TTS_CHARS
+from xamxam.timalens import TimaLensClient
 from xamxam.translate import TranslationError, Translator, translate_protected
 from xamxam.verify import VerificationStatus, verify_solution
 from xamxam.whatsapp.limits import MessageDeduplicator, UserRateLimiter
@@ -44,10 +62,19 @@ logger = logging.getLogger(__name__)
 _AUDIO_EXTENSIONS = {"audio/ogg": ".ogg", "audio/mpeg": ".mp3", "audio/mp4": ".m4a"}
 # Le texte normalisé est plus long que l'explication (nombres écrits en lettres).
 _NORMALIZATION_GROWTH = 1.3
-_HELP_REQUESTS = frozenset(
-    {"aide", "help", "menu", "bonjour", "salut", "salaam aleekum", "asalaa maalekum"}
-)
 _MAX_TEXT_CHARS = 2000
+_DAY_SECONDS = 24 * 3600.0
+# Repères de la mémoire (« [note vocale envoyée] »…) : le modèle les imite parfois.
+_MEMORY_MARKER = re.compile(
+    r"\[(?:exercice résolu|note vocale envoyée|boutons\s*:[^\]]*|vidéo[^\]]*"
+    r"|la vidéo a échoué)\]\s*",
+    re.IGNORECASE,
+)
+
+
+def _clean(text: str) -> str:
+    """Texte destiné à l'élève, sans repères internes."""
+    return _MEMORY_MARKER.sub("", text).strip()
 
 
 class _RejectedError(Exception):
@@ -66,6 +93,19 @@ class _Burst:
     messages: list[IncomingMessage] = field(default_factory=list)
 
 
+@dataclass
+class _Turn:
+    """Un tour de conversation : l'élève, sa photo éventuelle (jamais conservée), l'état."""
+
+    sender: str
+    user: str
+    conversation: Conversation
+    metrics: JobMetrics
+    image: bytes | None = None
+    image_mime: str | None = None
+    replied: bool = False
+
+
 def truncate_explanation(text: str, max_chars: int) -> str:
     """Coupe à la dernière fin de phrase avant la limite (le prompt la demande déjà)."""
     text = text.strip()
@@ -76,14 +116,19 @@ def truncate_explanation(text: str, max_chars: int) -> str:
     return cut[: end + 1] if end > 0 else cut
 
 
+def _summary(solution: MathSolution) -> str:
+    return f"{solution.statement} → {solution.final_answer}".strip(" →")
+
+
 class XamXamBot:
     def __init__(
         self,
         *,
         meta: MetaClient,
         llm: LLMProvider,
-        stt: STTProvider,
-        tts: TTSProvider,
+        agent: AgentModel,
+        stt: STTProvider | None,
+        tts: TTSProvider | None,
         pipeline: XamXamPipeline,
         kiriku_limiter: RateLimiter,
         hasher: IdHasher,
@@ -92,11 +137,14 @@ class XamXamBot:
         unlimited_numbers: frozenset[str] = frozenset(),
         translator: Translator | None = None,
         state_path: Path | None = None,
+        video: TimaLensClient | None = None,
+        video_voice: str | None = None,
+        video_max_credits: float | None = None,
     ) -> None:
         self._meta = meta
-        # Mode traduction : le modèle explique en français, le traducteur produit le wolof.
-        self._translator = translator
+        # Sans Kiriku (stt/tts None), l'agent répond en texte et ne transcrit pas les audios.
         self._llm = llm
+        self._agent = agent
         self._stt = stt
         self._tts = tts
         self._pipeline = pipeline
@@ -104,20 +152,48 @@ class XamXamBot:
         self._hasher = hasher
         self._settings = settings or BotSettings()
         self._messages = messages or BotMessages()
+        # Mode traduction : le modèle explique en français, le traducteur produit le wolof.
+        self._translator = translator
+        self._video = video
+        self._video_options: dict[str, Any] = {"max_credits": video_max_credits}
+        if video_voice:
+            self._video_options["voice"] = video_voice
+        clock = time.time if state_path is not None else time.monotonic
         self._user_limits = UserRateLimiter(
             self._settings.user_requests_per_hour,
             unlimited_numbers=unlimited_numbers,
-            clock=time.time if state_path is not None else time.monotonic,
+            clock=clock,
             store_path=state_path,
         )
+        self._video_quota = UserRateLimiter(
+            self._settings.videos_per_day,
+            window_seconds=_DAY_SECONDS,
+            unlimited_numbers=unlimited_numbers,
+            clock=clock,
+            store_path=state_path,
+            table="videos",
+        )
+        self._memory = ConversationMemory(ttl_seconds=self._settings.memory_minutes * 60)
         self._deduplicator = MessageDeduplicator(store_path=state_path, hasher=hasher)
         self._bursts: dict[str, _Burst] = {}
         self._tasks: set[asyncio.Task[None]] = set()
 
     @property
     def llm_info(self) -> dict[str, str]:
-        """Provider et modèle actifs (affichés par /health)."""
-        return {"provider": self._llm.name, "model": getattr(self._llm, "model", "")}
+        """Modèles actifs (affichés par /health)."""
+        return {
+            "provider": self._llm.name,
+            "model": getattr(self._llm, "model", ""),
+            "agent": getattr(self._agent, "model", ""),
+        }
+
+    @property
+    def voice_enabled(self) -> bool:
+        return self._tts is not None
+
+    @property
+    def video_enabled(self) -> bool:
+        return self._video is not None
 
     # --- Réception ---------------------------------------------------------------
 
@@ -144,11 +220,14 @@ class XamXamBot:
             await asyncio.gather(*list(self._tasks), return_exceptions=True)
 
     async def aclose(self) -> None:
-        """Ferme le client HTTP après la fin des traitements."""
+        """Ferme les clients HTTP après la fin des traitements."""
         try:
             await self._meta.aclose()
+            if self._video is not None:
+                await self._video.aclose()
         finally:
             self._user_limits.close()
+            self._video_quota.close()
             self._deduplicator.close()
 
     async def _handle_burst(self, sender: str, burst: _Burst) -> None:
@@ -159,9 +238,12 @@ class XamXamBot:
                 logger.info("job %s", json.dumps({"user": user, "outcome": "limite_atteinte"}))
                 completed = await self._reply(sender, self._messages.rate_limited)
                 return
-            # L'accusé part dès le premier message, avant la fenêtre de regroupement.
-            await self._reply(sender, self._messages.ack)
-            await asyncio.sleep(self._settings.grouping_window_seconds)
+            first = burst.messages[0]
+            await self._typing(first.message_id)
+            if first.kind in (MessageKind.IMAGE, MessageKind.AUDIO):
+                # Photo ou audio : le traitement prend du temps, l'élève est prévenu.
+                await self._reply(sender, self._messages.ack)
+            await self._wait_for_burst(burst)
             self._bursts.pop(sender, None)
             completed = await self._process(sender, user, burst.messages)
         finally:
@@ -171,6 +253,20 @@ class XamXamBot:
                 self._deduplicator.mark_done(ids)
             else:
                 self._deduplicator.forget(ids)
+
+    async def _wait_for_burst(self, burst: _Burst) -> None:
+        """Attente courte pour du texte, plus longue dès qu'une photo ou un audio arrive."""
+        window = self._settings.grouping_window_seconds
+        short = min(self._settings.text_grouping_seconds, window)
+        await asyncio.sleep(short)
+        if any(m.kind in (MessageKind.IMAGE, MessageKind.AUDIO) for m in burst.messages):
+            await asyncio.sleep(window - short)
+
+    async def _typing(self, message_id: str) -> None:
+        try:
+            await self._meta.mark_read_and_typing(message_id)
+        except XamXamError as exc:  # confort seulement : jamais bloquant
+            logger.info("Indicateur de saisie impossible (%s).", type(exc).__name__)
 
     async def _reply(self, sender: str, text: str) -> bool:
         try:
@@ -188,8 +284,8 @@ class XamXamBot:
         with tracking(metrics):
             try:
                 with timed("total"):
-                    await self._solve_and_answer(sender, messages, metrics)
-                metrics.outcome = "explication_envoyee"
+                    await self._converse(sender, user, messages, metrics)
+                metrics.outcome = "reponse_envoyee"
                 return True
             except _RejectedError as rejection:
                 metrics.outcome = rejection.outcome
@@ -202,52 +298,53 @@ class XamXamBot:
             finally:
                 logger.info("job %s", json.dumps(metrics.as_dict()))
 
-    async def _solve_and_answer(
-        self, sender: str, messages: Sequence[IncomingMessage], metrics: JobMetrics
+    async def _converse(
+        self, sender: str, user: str, messages: Sequence[IncomingMessage], metrics: JobMetrics
     ) -> None:
         images = [m for m in messages if m.kind is MessageKind.IMAGE and m.media_id]
         audios = [m for m in messages if m.kind is MessageKind.AUDIO and m.media_id]
-        texts = [m.text.strip() for m in messages if m.kind is MessageKind.TEXT and m.text]
-        written_question = " ".join(text for text in texts if text)
-        if (
-            not images
-            and not audios
-            and (
-                not written_question or written_question.casefold().strip(" .!?…") in _HELP_REQUESTS
-            )
-        ):
-            raise _RejectedError("aide", self._messages.help)
-        if len(written_question) > _MAX_TEXT_CHARS:
+        written = " ".join(m.text.strip() for m in messages if m.text and m.text.strip())
+        if len(written) > _MAX_TEXT_CHARS:
             raise _RejectedError("texte_trop_long", self._messages.text_too_long)
 
+        turn = _Turn(sender, user, self._memory.get(user), metrics)
+        heard: list[str] = []
         with media_workspace() as workspace:
-            image, image_mime = None, None
             if images:
                 with timed("telechargement"):
                     media = await self._meta.download_media(images[-1].media_id or "")
-                image, image_mime = media.content, media.mime_type
+                turn.image, turn.image_mime = media.content, media.mime_type
+                heard.append("[photo de l'exercice jointe]")
+            if audios and self._stt is None:
+                heard.append("[note vocale reçue, mais la transcription est indisponible]")
+            elif audios:
+                heard += await self._transcribe_all(sender, audios, workspace, metrics)
+        # Les fichiers audio sont effacés ici ; la photo ne vit que le temps du tour.
+        if written:
+            heard.append(written)
+        if not heard:
+            heard.append("[message non pris en charge : autocollant, document ou vidéo]")
+        await self._run_agent(turn, "\n".join(heard))
 
-            audio_chunks: list[list[Path]] = []
-            for index, audio in enumerate(audios):
-                with timed("telechargement"):
-                    media = await self._meta.download_media(audio.media_id or "")
-                extension = _AUDIO_EXTENSIONS.get(media.mime_type.split(";")[0], ".ogg")
-                path = workspace / f"note_{index}{extension}"
-                path.write_bytes(media.content)
-                audio_chunks.append(await self._prepare_audio(path, workspace))
-            metrics.inputs["morceaux_stt"] = sum(len(chunks) for chunks in audio_chunks)
-
-            await self._notify_if_slow(sender, metrics.inputs["morceaux_stt"])
-            transcripts = [await self._transcribe(chunks) for chunks in audio_chunks]
-            problem = ProblemInput(
-                image=image,
-                image_mime_type=image_mime,
-                transcript=" ".join(t for t in transcripts if t) or None,
-                text=written_question or None,
-            )
-            solution = await self._solve_verified(problem, metrics)
-        # Le dossier temporaire et les médias sont effacés ici, avant la synthèse.
-        await self._send_explanation(sender, solution)
+    async def _transcribe_all(
+        self,
+        sender: str,
+        audios: Sequence[IncomingMessage],
+        workspace: Path,
+        metrics: JobMetrics,
+    ) -> list[str]:
+        chunks: list[list[Path]] = []
+        for index, audio in enumerate(audios):
+            with timed("telechargement"):
+                media = await self._meta.download_media(audio.media_id or "")
+            extension = _AUDIO_EXTENSIONS.get(media.mime_type.split(";")[0], ".ogg")
+            path = workspace / f"note_{index}{extension}"
+            path.write_bytes(media.content)
+            chunks.append(await self._prepare_audio(path, workspace))
+        metrics.inputs["morceaux_stt"] = sum(len(c) for c in chunks)
+        await self._notify_if_slow(sender, metrics.inputs["morceaux_stt"])
+        transcripts = [await self._transcribe(c) for c in chunks]
+        return [f"[note vocale] {t}" for t in transcripts if t] or ["[note vocale inaudible]"]
 
     async def _prepare_audio(self, path: Path, workspace: Path) -> list[Path]:
         """Retourne les morceaux à transcrire : l'audio tel quel (le STT accepte l'OGG Opus)
@@ -265,6 +362,7 @@ class XamXamBot:
         )
 
     async def _transcribe(self, chunks: Sequence[Path]) -> str:
+        assert self._stt is not None  # appelé seulement avec Kiriku
         parts = []
         with timed("stt"):
             for chunk in chunks:  # successivement, dans l'ordre de l'audio
@@ -276,50 +374,106 @@ class XamXamBot:
 
     async def _notify_if_slow(self, sender: str, stt_requests: int) -> None:
         """Prévient l'élève si la file Kiriku annonce plus de 30 s d'attente."""
-        tts_requests = math.ceil(
-            self._settings.max_explanation_chars * _NORMALIZATION_GROWTH / MAX_TTS_CHARS
+        tts_requests = (
+            0
+            if self._tts is None
+            else math.ceil(
+                self._settings.max_explanation_chars * _NORMALIZATION_GROWTH / MAX_TTS_CHARS
+            )
         )
         wait = self._kiriku_limiter.estimated_wait(stt_requests + tts_requests)
         if wait > self._settings.wait_notice_threshold_seconds:
             await self._reply(sender, self._messages.wait_notice)
 
-    async def _solve_verified(self, problem: ProblemInput, metrics: JobMetrics) -> MathSolution:
-        """Résout, vérifie, et redonne une seule fois au modèle le résultat correct si besoin."""
+    # --- Agent ---------------------------------------------------------------------
+
+    async def _run_agent(self, turn: _Turn, student_message: str) -> None:
+        conversation = turn.conversation
+        messages = history_messages(conversation)
+        if messages and messages[-1]["role"] == "user":
+            # Tour précédent resté sans réponse : on fusionne pour garder l'alternance.
+            previous = messages.pop()["content"]
+            messages.append({"role": "user", "content": f"{previous}\n{student_message}"})
+        else:
+            messages.append({"role": "user", "content": student_message})
+        conversation.note(STUDENT, student_message)
+
+        state = AgentState(
+            voice=self._tts is not None,
+            video=self._video is not None,
+            videos_left_today=self._video_quota.remaining(turn.sender, turn.user),
+            video_in_progress=conversation.video_in_progress,
+            audio_sent_for_exercise=conversation.audio_sent,
+            exercise=_summary(conversation.solution) if conversation.solution else None,
+        )
+        system = build_agent_prompt(state, max_chars=self._settings.max_explanation_chars)
+        with timed("agent"):
+            run = await run_agent(
+                self._agent,
+                system=system,
+                messages=messages,
+                toolbox=_TurnToolbox(self, turn),
+                max_steps=self._settings.agent_max_steps,
+            )
+        turn.metrics.inputs["etapes_agent"] = run.steps
+        turn.metrics.inputs.update(f"outil_{name}" for name in run.tools)
+        if not turn.replied:
+            # L'agent n'a rien envoyé (limite d'étapes, réponse vide) : l'élève n'attend pas.
+            raise _RejectedError("agent_sans_reponse", self._messages.error)
+
+    # --- Outils de l'agent --------------------------------------------------------------
+
+    async def _tool_solve(self, turn: _Turn, question: str) -> dict[str, Any]:
+        question = question.strip()
+        if turn.image is None and not question:
+            return {"statut": "erreur", "detail": "aucune photo ni énoncé à résoudre"}
+        problem = ProblemInput(
+            image=turn.image, image_mime_type=turn.image_mime, text=question or None
+        )
         solution = await self._solve(problem)
+        if solution.status is not SolutionStatus.OK:
+            return {"statut": solution.status.value}
         verification = verify_solution(solution)
+        turn.metrics.verification = verification.status.value
         if verification.status is VerificationStatus.MISMATCH:
             hint = (
                 f"Le résultat correct est {verification.expected}."
                 if verification.expected
                 else f"Problème détecté : {verification.reason}."
             )
-            metrics.inputs["correction_demandee"] = 1
+            turn.metrics.inputs["correction_demandee"] = 1
             solution = await self._solve(replace(problem, previous=solution, correction=hint))
             verification = verify_solution(solution)
             if verification.status is VerificationStatus.MISMATCH:
-                metrics.verification = "echec_apres_correction"
+                turn.metrics.verification = "echec_apres_correction"
                 logger.warning(
                     "Vérification échouée après correction (notion=%s, calcul=%s, cause=%s).",
                     solution.notion,
                     solution.calculation.kind,
                     verification.reason,
                 )
-                raise _RejectedError("verification_echouee", self._messages.apology)
-            metrics.verification = "corrige"
-        else:
-            metrics.verification = verification.status.value
-            if verification.status is VerificationStatus.UNVERIFIED:
-                logger.info("Réponse non vérifiée (notion=%s).", solution.notion)
-        return solution
+                return {"statut": "verification_echouee"}
+            turn.metrics.verification = "corrige"
+        elif verification.status is VerificationStatus.UNVERIFIED:
+            logger.info("Réponse non vérifiée (notion=%s).", solution.notion)
+        explanation = await self._wolof_explanation(solution)
+        conversation = turn.conversation
+        conversation.solution = solution
+        conversation.audio_sent = False  # nouvel exercice
+        conversation.note(TUTOR, f"[exercice résolu] {_summary(solution)}")
+        return {
+            "statut": "ok",
+            "verification": turn.metrics.verification,
+            "enonce": solution.statement,
+            "notion": solution.notion.value,
+            "etapes": solution.steps,
+            "reponse_finale": solution.final_answer,
+            "explication_wo": explanation,
+        }
 
     async def _solve(self, problem: ProblemInput) -> MathSolution:
         with timed("llm"):
-            solution = await asyncio.to_thread(self._llm.solve, problem)
-        if solution.status is SolutionStatus.UNREADABLE:
-            raise _RejectedError("image_illisible", self._messages.unreadable_image)
-        if solution.status is SolutionStatus.OFF_TOPIC:
-            raise _RejectedError("hors_sujet", self._messages.off_topic)
-        return solution
+            return await asyncio.to_thread(self._llm.solve, problem)
 
     async def _wolof_explanation(self, solution: MathSolution) -> str:
         if self._translator is None:
@@ -335,19 +489,28 @@ class XamXamBot:
         except TranslationError as exc:
             # Message de l'erreur : comptes de marqueurs uniquement, jamais le texte.
             logger.warning("Traduction échouée : %s", exc)
-            raise _RejectedError("traduction_echouee", self._messages.apology) from exc
+            return ""
 
-    async def _send_explanation(self, sender: str, solution: MathSolution) -> None:
-        explanation = truncate_explanation(
-            await self._wolof_explanation(solution), self._settings.max_explanation_chars
-        )
-        text = self._pipeline.prepare(explanation).text
+    async def _tool_send_text(self, turn: _Turn, text: str) -> dict[str, Any]:
+        text = _clean(text)
+        if not text:
+            return {"statut": "erreur", "detail": "texte vide"}
+        with timed("envoi"):
+            await self._meta.send_text(turn.sender, text)
+        turn.replied = True
+        turn.conversation.note(TUTOR, text)
+        return {"statut": "envoye"}
+
+    async def _speak(self, text: str) -> bytes:
+        """Texte wolof → Xam-Xam (formules en mots, lexique) → TTS → OGG Opus."""
+        assert self._tts is not None
+        prepared = self._pipeline.prepare(text).text
         with timed("tts"):
-            if self._settings.audio_self_check:
+            if self._settings.audio_self_check and self._stt is not None:
                 checked = await asyncio.to_thread(
                     synthesize_checked,
-                    explanation,
                     text,
+                    prepared,
                     tts=self._tts,
                     stt=self._stt,
                     language=self._settings.language,
@@ -355,13 +518,136 @@ class XamXamBot:
                 wav = checked.audio
             else:
                 wav = await asyncio.to_thread(
-                    self._tts.synthesize, text, language=self._settings.language
+                    self._tts.synthesize, prepared, language=self._settings.language
                 )
         with timed("conversion"):
-            ogg = await asyncio.to_thread(wav_to_ogg_opus, wav)
+            return await asyncio.to_thread(wav_to_ogg_opus, wav)
+
+    async def _tool_send_audio(self, turn: _Turn, text: str) -> dict[str, Any]:
+        if self._tts is None:
+            return {"statut": "indisponible"}
+        text = truncate_explanation(_clean(text), self._settings.max_explanation_chars)
+        if not text:
+            return {"statut": "erreur", "detail": "texte vide"}
+        ogg = await self._speak(text)
         with timed("envoi"):
             media_id = await self._meta.upload_media(ogg, "audio/ogg", "xamxam.ogg")
-            await self._meta.send_audio(sender, media_id)
-            await self._meta.send_text(
-                sender, self._messages.final_answer.format(answer=solution.final_answer)
+            await self._meta.send_audio(turn.sender, media_id)
+        turn.replied = True
+        turn.conversation.audio_sent = True
+        turn.conversation.note(TUTOR, f"[note vocale envoyée] {text}")
+        return {"statut": "envoye"}
+
+    async def _tool_offer_buttons(
+        self, turn: _Turn, text: str, buttons: Sequence[object]
+    ) -> dict[str, Any]:
+        text = _clean(text)
+        titles = [str(b).strip()[:20] for b in buttons if str(b).strip()][:3]
+        if not text or not titles:
+            return {"statut": "erreur", "detail": "texte ou boutons manquants"}
+        with timed("envoi"):
+            await self._meta.send_buttons(turn.sender, text, titles)
+        turn.replied = True
+        turn.conversation.note(TUTOR, f"{text} [boutons : {' / '.join(titles)}]")
+        return {"statut": "envoye"}
+
+    async def _tool_create_video(self, turn: _Turn, text: str, title: str) -> dict[str, Any]:
+        conversation = turn.conversation
+        if self._video is None:
+            return {"statut": "indisponible"}
+        if conversation.video_in_progress:
+            return {"statut": "refusee", "raison": "une vidéo est déjà en préparation"}
+        text = truncate_explanation(_clean(text), self._settings.max_explanation_chars)
+        if not text:
+            return {"statut": "erreur", "detail": "texte vide"}
+        if not self._video_quota.allow(turn.sender, turn.user):
+            return {"statut": "refusee", "raison": "quota de vidéos du jour atteint"}
+        title = title.strip() or "Xam-Xam"
+        conversation.video_in_progress = True
+        turn.replied = True  # la vidéo arrivera : l'élève n'est pas laissé sans réponse
+        conversation.note(TUTOR, f"[vidéo en préparation : {title}]")
+        self._spawn(self._produce_video(turn, text, title))
+        return {"statut": "lancee", "delai": "quelques minutes"}
+
+    async def _produce_video(self, turn: _Turn, text: str, title: str) -> None:
+        """Tâche de fond : vidéo TimaLens, envoyée par lien. Avec Kiriku, la même voix que
+        les notes vocales sert de narration (audio généré, jamais celui de l'élève)."""
+        assert self._video is not None
+        conversation, sender = turn.conversation, turn.sender
+        solution = conversation.solution
+        direction = "Tableau de collège, schéma de géométrie clair et annoté."
+        if solution is not None:
+            direction += f" Exercice : {solution.statement[:500]} Réponse : {solution.final_answer}"
+        start = time.monotonic()
+        try:
+            narration = None
+            if self._tts is not None:
+                narration = (await self._speak(text), "audio/ogg", "xamxam.ogg")
+            link = await self._video.make_video(
+                text,
+                title=f"Xam-Xam : {title}"[:200],
+                language=self._settings.language,
+                visual_direction=direction,
+                narration_audio=narration,
+                **self._video_options,
             )
+        except XamXamError as exc:
+            logger.warning("Vidéo TimaLens impossible (%s : %s).", type(exc).__name__, exc)
+            await self._reply(sender, self._messages.video_failed)
+            conversation.note(TUTOR, "[la vidéo a échoué]")
+            return
+        finally:
+            conversation.video_in_progress = False
+        caption = self._messages.video_caption.format(title=title)
+        try:
+            await self._meta.send_video(sender, link, caption)
+        except XamXamError as exc:
+            # Vidéo trop lourde pour WhatsApp, par exemple : le lien suffit.
+            logger.warning("Envoi de la vidéo impossible (%s) : lien envoyé.", type(exc).__name__)
+            await self._reply(sender, self._messages.video_link.format(link=link))
+        conversation.videos.append(title)
+        conversation.note(TUTOR, f"[vidéo envoyée : {title}]")
+        logger.info(
+            "video %s",
+            json.dumps({"user": turn.user, "duree_s": round(time.monotonic() - start)}),
+        )
+
+
+class _TurnToolbox:
+    """Outils de l'agent pour un tour : chaque appel agit pour l'élève de ce tour."""
+
+    declarations = TOOL_DECLARATIONS
+
+    def __init__(self, bot: XamXamBot, turn: _Turn) -> None:
+        self._bot = bot
+        self._turn = turn
+
+    async def execute(self, name: str, args: dict[str, Any]) -> dict[str, Any]:
+        bot, turn = self._bot, self._turn
+
+        def text(key: str) -> str:
+            value = args.get(key, "")
+            return value if isinstance(value, str) else str(value)
+
+        if name == SOLVE:
+            return await bot._tool_solve(turn, text("question"))
+        if name == SEND_TEXT:
+            return await bot._tool_send_text(turn, text("texte"))
+        if name == SEND_AUDIO:
+            return await bot._tool_send_audio(turn, text("texte_wolof"))
+        if name == OFFER_BUTTONS:
+            buttons = args.get("boutons")
+            return await bot._tool_offer_buttons(
+                turn, text("texte"), buttons if isinstance(buttons, list) else []
+            )
+        if name == CREATE_VIDEO:
+            return await bot._tool_create_video(turn, text("texte_wolof"), text("titre"))
+        return {"statut": "erreur", "detail": f"outil inconnu : {name}"}
+
+    async def say(self, text: str) -> None:
+        """Texte final du modèle : envoyé seulement si rien n'est encore parti pendant ce tour.
+        Après un envoi par outil, c'est un commentaire (« Message envoyé ! ») à ne pas doubler."""
+        if self._turn.replied:
+            logger.info("Texte final de l'agent ignoré : réponse déjà envoyée.")
+            return
+        await self._bot._tool_send_text(self._turn, text)

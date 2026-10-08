@@ -1,25 +1,19 @@
 [
   {
-    "nom": "ministral-3-14b-irlande",
-    "provider": "bedrock",
-    "modele": "mistral.ministral-3-14b-instruct",
-    "region": "eu-west-1",
+    "nom": "gemini-3.5-flash",
+    "modele": "gemini-3.5-flash",
     "prix_entree_par_million": null,
     "prix_sortie_par_million": null
   },
   {
-    "nom": "qwen3-vl-235b-irlande",
-    "provider": "bedrock",
-    "modele": "qwen.qwen3-vl-235b-a22b",
-    "region": "eu-west-1",
+    "nom": "gemini-3.6-flash",
+    "modele": "gemini-3.6-flash",
     "prix_entree_par_million": null,
     "prix_sortie_par_million": null
   },
   {
-    "nom": "mistral-large-3-virginie",
-    "provider": "bedrock",
-    "modele": "mistral.mistral-large-3-675b-instruct",
-    "region": "us-east-1",
+    "nom": "gemini-3.8-flash",
+    "modele": "gemini-3.8-flash",
     "prix_entree_par_million": null,
     "prix_sortie_par_million": null
   }

@@ -1,16 +1,20 @@
 import io
 import wave
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
+from fakes import FakeTimaLens
 from xamxam.config import Settings
 from xamxam.pipeline import XamXamPipeline
 from xamxam.providers import MockSTTProvider, MockTTSProvider
 from xamxam.timalens import (
     VIDEO_DISABLED_MESSAGE,
+    RenderRefusedError,
     TimaLensClient,
     TimaLensDisabledError,
+    TimaLensError,
     build_timalens_client,
 )
 from xamxam.whatsapp import create_app
@@ -34,10 +38,56 @@ def test_timalens_client_requires_key_and_hides_it() -> None:
         TimaLensClient("")
     client = build_timalens_client(Settings(timalens_api_key="tl-secret"))
     assert client is not None and "tl-secret" not in repr(client)
+
+
+@pytest.mark.anyio
+async def test_timalens_errors_keep_only_status_and_code() -> None:
+    api = FakeTimaLens(affordable=False)
+    client = api.client()
     with pytest.raises(ValueError, match="vide"):
-        client.create_clip("  ")
-    with pytest.raises(NotImplementedError):
-        client.create_clip("Hypoténuse bi")
+        await client.create_project("  ", title="t")
+    with pytest.raises(RenderRefusedError, match="insuffisants") as refused:
+        await client.make_video("Hypoténuse bi", title="t")
+    assert refused.value.code == "insufficient_credits"
+    assert "POST /projects/p1/confirm" not in api.paths
+
+    unauthorized = TimaLensClient("tlak_autre", transport=httpx.MockTransport(api.handler))
+    with pytest.raises(TimaLensError) as raised:
+        await unauthorized.job_status("p1")
+    assert (raised.value.status, raised.value.code) == (401, "unauthenticated")
+
+
+@pytest.mark.anyio
+async def test_timalens_wait_gives_up_after_deadline() -> None:
+    now = [0.0]
+    api = FakeTimaLens(states=["generating"])
+
+    async def advance(seconds: float) -> None:
+        now[0] += seconds
+
+    client = TimaLensClient(
+        "tlak_test",
+        transport=httpx.MockTransport(api.handler),
+        poll_interval=10,
+        max_wait_seconds=30,
+        sleep=advance,
+        clock=lambda: now[0],
+    )
+    with pytest.raises(TimaLensError, match="non atteint après 30 s"):
+        await client.wait_for("p1", "preview_ready")
+    assert api.paths.count("GET /jobs/p1") == 4
+
+
+@pytest.mark.anyio
+async def test_timalens_narration_uses_detected_language() -> None:
+    api = FakeTimaLens(detected_language="fr")
+    client = api.client()
+    narration = await client.upload_narration(b"OggS...", mime_type="audio/ogg", filename="n.ogg")
+    assert (narration.asset_id, narration.language) == ("a1", "fr")
+    await client.create_project("Explication", title="Titre", narration=narration)
+    project = api.requests[-1][2]
+    assert project["language"] == "fr"
+    assert project["source_text"] == "Titre\n\nExplication"
 
 
 @pytest.fixture

@@ -24,10 +24,29 @@ class MessageKind(StrEnum):
 class MediaRef(_Model):
     id: str
     mime_type: str | None = None
+    caption: str | None = None  # légende d'une photo
 
 
 class TextBody(_Model):
     body: str = ""
+
+
+class _ButtonReply(_Model):
+    id: str = ""
+    title: str = ""
+
+
+class InteractiveBody(_Model):
+    """Réponse à des boutons envoyés par le bot (`interactive.button_reply`)."""
+
+    type: str = ""
+    button_reply: _ButtonReply | None = None
+
+
+class ButtonBody(_Model):
+    """Bouton de réponse rapide d'un modèle de message (`button`)."""
+
+    text: str = ""
 
 
 class RawMessage(_Model):
@@ -35,6 +54,8 @@ class RawMessage(_Model):
     sender: str = Field(alias="from")
     type: str
     text: TextBody | None = None
+    interactive: InteractiveBody | None = None
+    button: ButtonBody | None = None
     image: MediaRef | None = None
     audio: MediaRef | None = None
 
@@ -70,20 +91,33 @@ class IncomingMessage(BaseModel):
     text: str | None = None
 
 
+def _text_of(raw: RawMessage) -> str | None:
+    """Texte saisi, ou libellé du bouton cliqué (traité comme un message texte)."""
+    if raw.type == MessageKind.TEXT and raw.text:
+        return raw.text.body
+    if raw.type == "interactive" and raw.interactive and raw.interactive.button_reply:
+        return raw.interactive.button_reply.title
+    if raw.type == "button" and raw.button:
+        return raw.button.text
+    return None
+
+
 def extract_messages(payload: WebhookPayload) -> list[IncomingMessage]:
     """Liste les messages d'élèves ; les statuts de livraison et autres événements sont ignorés."""
     messages = []
     for entry in payload.entry:
         for change in entry.changes:
             for raw in change.value.messages:
+                text = _text_of(raw)
+                media: MediaRef | None = None
                 if raw.type == MessageKind.IMAGE and raw.image:
                     kind, media = MessageKind.IMAGE, raw.image
                 elif raw.type == MessageKind.AUDIO and raw.audio:
                     kind, media = MessageKind.AUDIO, raw.audio
-                elif raw.type == MessageKind.TEXT and raw.text:
-                    kind, media = MessageKind.TEXT, None
+                elif text:
+                    kind = MessageKind.TEXT
                 else:
-                    kind, media = MessageKind.OTHER, None
+                    kind = MessageKind.OTHER
                 messages.append(
                     IncomingMessage(
                         message_id=raw.id,
@@ -91,7 +125,9 @@ def extract_messages(payload: WebhookPayload) -> list[IncomingMessage]:
                         kind=kind,
                         media_id=media.id if media else None,
                         mime_type=media.mime_type if media else None,
-                        text=raw.text.body if kind is MessageKind.TEXT and raw.text else None,
+                        text=text
+                        if kind is MessageKind.TEXT
+                        else (media.caption if media and media.caption else None),
                     )
                 )
     return messages

@@ -1,6 +1,6 @@
 # Xam-Xam
 
-Xam-Xam prépare des explications de mathématiques en wolof pour la synthèse vocale. Il lit les expressions mathématiques en mots, puis peut remplacer les termes difficiles à prononcer par des graphies adaptées au TTS. Un prototype de bot WhatsApp utilise cette chaîne pour répondre à des questions scolaires par la voix.
+Xam-Xam prépare des explications de mathématiques en wolof pour la synthèse vocale. Il lit les expressions mathématiques en mots, puis peut remplacer les termes difficiles à prononcer par des graphies adaptées au TTS. Un prototype de bot WhatsApp utilise cette chaîne pour répondre à des exercices envoyés en photo, en texte ou par note vocale.
 
 **État du projet, 8 octobre 2026 :** prototype de recherche. Le corpus de 100 phrases et les prononciations du lexique sont encore des brouillons à faire relire par des locuteurs natifs. Les résultats publiés ci-dessous reposent sur le STT ; aucune évaluation humaine n'a encore été remplie.
 
@@ -24,11 +24,11 @@ texte ou exercice → lecture des formules → lexique validé → TTS → audio
                               évaluation : audio → STT → métriques + écoute humaine
 ```
 
-En production, seules les entrées du lexique au statut `valide` sont appliquées. Le benchmark publié a activé explicitement le statut `brouillon` pour tester les propositions existantes. Le bot ajoute une extraction de l'énoncé, un modèle de langage, une vérification des calculs Pythagore/Thalès avec SymPy et une réponse vocale. L'autocontrôle audio peut retranscrire une formule générée et essayer une variante lorsque ses éléments ne sont pas reconnus ; il ne valide pas la qualité linguistique.
+En production, seules les entrées du lexique au statut `valide` sont appliquées. Le benchmark publié a activé explicitement le statut `brouillon` pour tester les propositions existantes. Le bot est un agent tuteur conversationnel (Gemini) : il discute, lit la photo de l'exercice, vérifie les calculs Pythagore/Thalès avec SymPy, puis guide l'élève en wolof, du texte vers la note vocale (Kiriku) et jusqu'à une vidéo narrée (TimaLens) s'il ne comprend toujours pas. L'autocontrôle audio peut retranscrire une formule générée et essayer une variante lorsque ses éléments ne sont pas reconnus ; il ne valide pas la qualité linguistique.
 
 ## Essayer localement
 
-Python 3.11 ou plus récent et `ffmpeg` sont nécessaires pour les fonctions audio du bot.
+Python 3.11 ou plus récent est nécessaire, ainsi que `ffmpeg` pour les notes vocales.
 
 ```bash
 git clone https://github.com/ialim0/xam-xam.git
@@ -43,6 +43,49 @@ python -m xamxam.eval report --output-dir results/benchmark-100
 
 La dernière commande recalcule les tableaux publiés **sans clé API** à partir des transcriptions figées. Pour refaire un benchmark audio, suivez [docs/benchmark.md](docs/benchmark.md) et choisissez explicitement `--provider kvicc`. Sans configuration Kiriku, le fournisseur `auto` utilise un mock ; ses résultats ne sont pas des mesures de prononciation.
 
+## Démarrer le bot WhatsApp sur sa machine
+
+Il faut deux comptes gratuits : une **clé Gemini** ([Google AI Studio](https://aistudio.google.com/apikey)) et une **application Meta** avec le produit WhatsApp ([démarrage WhatsApp Cloud API](https://developers.facebook.com/docs/whatsapp/cloud-api/get-started)), qui fournit un numéro de test.
+
+| Service | Variables | Sans lui |
+| --- | --- | --- |
+| Meta WhatsApp Cloud | `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET` | le bot ne démarre pas (503) |
+| Gemini | `GEMINI_API_KEY` | le bot ne démarre pas (503) |
+| Kiriku (KVICC) | `KVICC_TTS_URL`, `KVICC_STT_URL`, `KVICC_API_KEY` | réponses en texte ; notes vocales non écoutées |
+| TimaLens | `TIMALENS_API_KEY` | pas de vidéo |
+
+1. **Configurer.** Copiez `.env.example` en `.env` et remplissez au moins les variables Meta et Gemini. Dans la console Meta : le jeton d'accès (`WHATSAPP_TOKEN`), l'identifiant du numéro (`WHATSAPP_PHONE_NUMBER_ID`) et la clé secrète de l'application (`WHATSAPP_APP_SECRET`, dans *Paramètres de l'application › Général*). `WHATSAPP_VERIFY_TOKEN` est une chaîne de votre choix.
+
+2. **Lancer le serveur.**
+
+   ```bash
+   set -a; source .env; set +a
+   uvicorn --factory xamxam.whatsapp.app:create_app --port 8000
+   ```
+
+   Vérifiez avec `curl localhost:8000/health` : `bot_ready` doit valoir `true`, `missing_variables` doit être vide ; `voice` et `video` indiquent si Kiriku et TimaLens sont actifs.
+
+3. **Exposer le webhook.** Meta exige une URL publique en HTTPS. Ouvrez un tunnel dans un second terminal, par exemple `cloudflared tunnel --url http://localhost:8000` ou `ngrok http 8000`, et notez l'adresse obtenue.
+
+4. **Brancher Meta.** Dans *WhatsApp › Configuration*, indiquez `https://<adresse-du-tunnel>/webhook` comme URL de rappel et votre `WHATSAPP_VERIFY_TOKEN` comme jeton de vérification, puis abonnez-vous au champ `messages`. Ajoutez votre propre numéro parmi les destinataires autorisés du numéro de test.
+
+5. **Tester.** Écrivez `salut` au numéro de test, puis envoyez la photo d'un exercice de Pythagore ou de Thalès. Le bot affiche « en train d'écrire », répond en quelques secondes au texte, et attend 8 s après une photo ou une note vocale pour les regrouper.
+
+### Comment l'agent répond
+
+À chaque message, l'agent choisit lui-même parmi cinq outils : répondre en texte, résoudre l'exercice (lecture de la photo, vérification SymPy), envoyer une note vocale, proposer des boutons (« 🔊 Écouter », « 🎬 Vidéo », « ✅ Compris ») et lancer une vidéo.
+
+- Une salutation ou une question de cours reçoit une réponse courte en texte.
+- Un exercice reçoit une explication courte, la réponse vérifiée et des boutons.
+- Si l'élève ne comprend pas (« dégguma »), l'agent reformule en note vocale ; s'il ne comprend toujours pas, il le prévient par audio et lance seul la vidéo.
+- Une note vocale reçoit aussi une réponse vocale.
+
+Garde-fous en code : un résultat chiffré ne peut venir que de l'outil de résolution vérifié ; au plus 6 étapes par message ; une vidéo à la fois et 5 par jour par élève (`XAMXAM_VIDEOS_PER_DAY`). La conversation est gardée **1 h en mémoire vive** (`XAMXAM_MEMORY_MINUTES`) : rien n'est écrit sur disque, et ni les photos ni les audios des élèves ne sont conservés.
+
+Avec `TIMALENS_API_KEY`, l'agent peut transformer son explication wolof en vidéo tableau blanc au format vertical. Si Kiriku est configuré, la note vocale envoyée à l'élève est transmise à TimaLens et sert de narration : on entend la même voix, et les scènes suivent ses mots. Sans Kiriku, une voix wolof de TimaLens lit le texte. Seul l'audio généré par Xam-Xam est envoyé, jamais la note vocale de l'élève. L'aperçu est gratuit ; le rendu consomme des crédits TimaLens, que `TIMALENS_MAX_CREDITS` permet de plafonner par vidéo. La vidéo arrive quelques minutes après l'explication, sous forme de vidéo WhatsApp, ou de lien si elle dépasse la taille acceptée. Le projet TimaLens (explication, énoncé et réponse) reste dans votre compte TimaLens ; la photo de l'élève ne lui est pas envoyée.
+
+Le `Dockerfile` construit la même application : `docker build -t xamxam . && docker run --env-file .env -p 8000:8080 xamxam`.
+
 ## Se repérer
 
 | Chemin | Rôle |
@@ -52,15 +95,18 @@ La dernière commande recalcule les tableaux publiés **sans clé API** à parti
 | [`src/xamxam/providers/`](src/xamxam/providers/) | Interfaces TTS/STT, Kiriku, mock et cache. |
 | [`src/xamxam/eval/`](src/xamxam/eval/) | Génération des audios, alignement, métriques et rapports. |
 | [`src/xamxam/whatsapp/`](src/xamxam/whatsapp/) | Webhook et orchestration du bot. |
+| [`src/xamxam/agent/`](src/xamxam/agent/) | Agent tuteur : boucle d'outils, consignes, mémoire courte. |
+| [`src/xamxam/llm/`](src/xamxam/llm/) | Appel à Gemini (photo + question), schéma JSON de la solution. |
+| [`src/xamxam/timalens/`](src/xamxam/timalens/) | Vidéo narrée de l'explication (optionnelle). |
 | [`data/`](data/) | Phrases et lexique source, sous CC BY-SA 4.0. |
 | [`results/benchmark-100/`](results/benchmark-100/) | Transcriptions et rapports figés ; les WAV ne sont pas dans Git. |
 
-Le [guide de contribution](CONTRIBUTING.md) décrit la validation des prononciations et des phrases. Pour le bot : [configuration des modèles](docs/modeles.md), [auto-hébergement](docs/auto-hebergement.md), [déploiement AWS](docs/deploiement-aws.md) et [alternative GCP](docs/deploiement-gcp.md). La configuration est documentée dans [`.env.example`](.env.example) ; ne publiez jamais votre fichier `.env`.
+Le [guide de contribution](CONTRIBUTING.md) décrit la validation des prononciations et des phrases. Le choix et l'évaluation du modèle sont décrits dans [docs/modeles.md](docs/modeles.md). La configuration est documentée dans [`.env.example`](.env.example) ; ne publiez jamais votre fichier `.env`.
 
 ## Licences
 
-Code : [MIT](LICENSE). Corpus, lexique et résultats textuels : [CC BY-SA 4.0](data/LICENSE). Les API Kiriku, Meta, Bedrock et l'éventuel service vidéo ont leurs propres conditions ; aucun audio généré par ces services n'est distribué ici.
+Code : [MIT](LICENSE). Corpus, lexique et résultats textuels : [CC BY-SA 4.0](data/LICENSE). Les API Kiriku, Meta, Gemini et TimaLens ont leurs propres conditions ; aucun audio généré par ces services n'est distribué ici.
 
 ## English summary
 
-Xam-Xam is a Wolof math speech preprocessing prototype with a WhatsApp bot. Its public 100-sentence benchmark compares raw text, math normalization and a **draft** pronunciation lexicon using TTS → STT. The draft lexicon did not improve the reported STT metrics, and no human listening scores are available yet. See the [results](docs/resultats-100.md) and [reproduction protocol](docs/benchmark.md).
+Xam-Xam is a Wolof math speech preprocessing prototype with a WhatsApp bot. The bot is a conversational tutor agent built on Gemini function calling: it chats, reads exercise photos, checks Pythagoras/Thales results with SymPy, and escalates from text to Wolof voice notes (Kiriku) to a narrated TimaLens video when the student is stuck. It runs locally with a free Gemini key, a Meta test number and an HTTPS tunnel. Its public 100-sentence benchmark compares raw text, math normalization and a **draft** pronunciation lexicon using TTS → STT. The draft lexicon did not improve the reported STT metrics, and no human listening scores are available yet. See the [results](docs/resultats-100.md) and [reproduction protocol](docs/benchmark.md).

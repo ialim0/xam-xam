@@ -25,7 +25,11 @@ class UserRateLimiter:
         unlimited_numbers: frozenset[str] = frozenset(),
         clock: Callable[[], float] = time.monotonic,
         store_path: Path | None = None,
+        table: str = "requests",
     ) -> None:
+        if not table.isidentifier():
+            raise ValueError(f"Nom de table invalide : {table}")
+        self._table = table
         self._max_requests = max_requests
         self._window = window_seconds
         self._unlimited = unlimited_numbers
@@ -34,35 +38,48 @@ class UserRateLimiter:
         self._store = _open_store(store_path) if store_path is not None else None
         if self._store is not None:
             self._store.execute(
-                "CREATE TABLE IF NOT EXISTS requests (user_hash TEXT NOT NULL, ts REAL NOT NULL)"
+                f"CREATE TABLE IF NOT EXISTS {table} (user_hash TEXT NOT NULL, ts REAL NOT NULL)"
             )
-            self._store.execute("CREATE INDEX IF NOT EXISTS requests_ts ON requests(ts)")
+            self._store.execute(f"CREATE INDEX IF NOT EXISTS {table}_ts ON {table}(ts)")
             self._store.execute(
-                "CREATE INDEX IF NOT EXISTS requests_user ON requests(user_hash, ts)"
+                f"CREATE INDEX IF NOT EXISTS {table}_user ON {table}(user_hash, ts)"
             )
 
     def allow(self, sender: str, key: str) -> bool:
         """`sender` sert à repérer les numéros illimités ; `key` (haché) indexe l'historique."""
         if normalize_phone_number(sender) in self._unlimited:
             return True
+        if self.remaining(sender, key) <= 0:
+            return False
         now = self._clock()
         if self._store is not None:
             with self._store:
-                self._store.execute("DELETE FROM requests WHERE ts <= ?", (now - self._window,))
-                count = self._store.execute(
-                    "SELECT COUNT(*) FROM requests WHERE user_hash = ?", (key,)
-                ).fetchone()[0]
-                if count >= self._max_requests:
-                    return False
-                self._store.execute("INSERT INTO requests(user_hash, ts) VALUES (?, ?)", (key, now))
-            return True
-        history = self._history.setdefault(key, deque())
-        while history and history[0] <= now - self._window:
-            history.popleft()
-        if len(history) >= self._max_requests:
-            return False
-        history.append(now)
+                self._store.execute(
+                    f"INSERT INTO {self._table}(user_hash, ts) VALUES (?, ?)", (key, now)
+                )
+        else:
+            self._history.setdefault(key, deque()).append(now)
         return True
+
+    def remaining(self, sender: str, key: str) -> int:
+        """Demandes encore possibles dans la fenêtre (sans en consommer)."""
+        if normalize_phone_number(sender) in self._unlimited:
+            return self._max_requests
+        now = self._clock()
+        if self._store is not None:
+            with self._store:
+                self._store.execute(
+                    f"DELETE FROM {self._table} WHERE ts <= ?", (now - self._window,)
+                )
+                count = self._store.execute(
+                    f"SELECT COUNT(*) FROM {self._table} WHERE user_hash = ?", (key,)
+                ).fetchone()[0]
+        else:
+            history = self._history.setdefault(key, deque())
+            while history and history[0] <= now - self._window:
+                history.popleft()
+            count = len(history)
+        return max(0, self._max_requests - count)
 
     def close(self) -> None:
         if self._store is not None:

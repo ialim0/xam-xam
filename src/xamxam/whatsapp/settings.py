@@ -23,8 +23,15 @@ def _boolean(raw: str) -> bool:
 class BotSettings:
     # Attente après le premier message pour regrouper photo et note vocale.
     grouping_window_seconds: float = 8.0
+    # Attente plus courte quand l'élève n'envoie que du texte (conversation).
+    text_grouping_seconds: float = 2.0
     max_explanation_chars: int = 1000
-    user_requests_per_hour: int = 10
+    # Un message (ou groupe de messages) compte pour une demande.
+    user_requests_per_hour: int = 30
+    videos_per_day: int = 5
+    # Mémoire de conversation, en mémoire vive uniquement.
+    memory_minutes: float = 60.0
+    agent_max_steps: int = 6
     # Au-delà, l'élève est prévenu que la réponse va tarder.
     wait_notice_threshold_seconds: float = 30.0
     kiriku_requests_per_minute: float = 30.0
@@ -45,6 +52,8 @@ class BotSettings:
             "XAMXAM_GROUPING_WINDOW_SECONDS": ("grouping_window_seconds", float),
             "XAMXAM_MAX_EXPLANATION_CHARS": ("max_explanation_chars", int),
             "XAMXAM_USER_REQUESTS_PER_HOUR": ("user_requests_per_hour", int),
+            "XAMXAM_VIDEOS_PER_DAY": ("videos_per_day", int),
+            "XAMXAM_MEMORY_MINUTES": ("memory_minutes", float),
             "XAMXAM_NUMBER_LANGUAGE": ("number_language", NumberLanguage),
             "XAMXAM_AUDIO_SELF_CHECK": ("audio_self_check", _boolean),
         }

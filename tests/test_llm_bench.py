@@ -55,13 +55,13 @@ def test_load_inputs(photos: Path, tmp_path: Path) -> None:
 
     configs = tmp_path / "configs.json"
     configs.write_text(
-        '[{"nom": "a", "provider": "selfhosted", "modele": "m", "prix_entree_par_million": 0.1,'
+        '[{"nom": "a", "modele": "m", "prix_entree_par_million": 0.1,'
         ' "prix_sortie_par_million": 0.3}]',
         encoding="utf-8",
     )
     [config] = load_configs(configs)
     assert config.cost(1_000_000, 1_000_000) == pytest.approx(0.4)
-    assert ModelConfig("b", "bedrock", "m").cost(10, 10) is None
+    assert ModelConfig("b", "m").cost(10, 10) is None
 
 
 @pytest.mark.parametrize(
@@ -99,14 +99,13 @@ def test_benchmark_metrics_and_outputs(photos: Path, tmp_path: Path) -> None:
         ConfiguredModel(
             ModelConfig(
                 "fort",
-                "selfhosted",
                 "m1",
                 price_input_per_million=1.0,
                 price_output_per_million=2.0,
             ),
             good,
         ),
-        ConfiguredModel(ModelConfig("faible", "selfhosted", "m2"), weak),
+        ConfiguredModel(ModelConfig("faible", "m2"), weak),
     ]
     records = run_llm_benchmark(cases, photos, models, repetitions=2)
     assert len(records) == 8
@@ -142,12 +141,12 @@ def test_benchmark_metrics_and_outputs(photos: Path, tmp_path: Path) -> None:
     assert (out / "notation_wolof.csv").read_text(encoding="utf-8") == "annoté"
 
 
-def test_cli_llm_with_unknown_model_fails_cleanly(photos: Path, tmp_path: Path) -> None:
+def test_cli_llm_without_gemini_key_fails_cleanly(photos: Path, tmp_path: Path) -> None:
     from xamxam.eval.cli import main
 
     configs = tmp_path / "c.json"
     configs.write_text(
-        '[{"nom": "x", "provider": "selfhosted", "modele": "inconnu/x", "base_url": "http://x"}]',
+        '[{"nom": "x", "modele": "gemini-3.5-flash"}]',
         encoding="utf-8",
     )
     assert (
@@ -166,16 +165,12 @@ def test_cli_llm_with_unknown_model_fails_cleanly(photos: Path, tmp_path: Path) 
     )
 
 
-def test_example_configurations_are_allowed() -> None:
+def test_example_configurations_load() -> None:
     from conftest import ROOT
-    from xamxam.llm.allowlist import load_allowlist
 
-    allowlist = load_allowlist()
     configs = load_configs(ROOT / "data/eval/configurations_llm.example.json")
     assert {c.model for c in configs} == {
-        "mistral.ministral-3-14b-instruct",
-        "qwen.qwen3-vl-235b-a22b",
-        "mistral.mistral-large-3-675b-instruct",
+        "gemini-3.5-flash",
+        "gemini-3.6-flash",
+        "gemini-3.8-flash",
     }
-    for config in configs:
-        allowlist.require(config.provider, config.model, region=config.region)

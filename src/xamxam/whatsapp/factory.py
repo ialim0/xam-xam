@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 import os
 
+from xamxam.agent import GeminiAgentModel
 from xamxam.config import Settings
 from xamxam.llm.base import LLMConfigurationError
 from xamxam.llm.factory import create_llm
@@ -14,20 +16,23 @@ from xamxam.providers import (
     RateLimiter,
     create_providers,
 )
+from xamxam.timalens import build_timalens_client
 from xamxam.whatsapp.bot import XamXamBot
 from xamxam.whatsapp.messages import BotMessages
 from xamxam.whatsapp.meta import MetaClient
 from xamxam.whatsapp.privacy import IdHasher
 from xamxam.whatsapp.settings import BotSettings
 
+logger = logging.getLogger(__name__)
+
 
 def build_bot(
     settings: Settings, pipeline: XamXamPipeline, bot_settings: BotSettings | None = None
 ) -> XamXamBot:
-    """Construit le bot réel (Meta, LLM open source, Kiriku). Suppose missing_bot_variables()
-    vide. Lève LLMConfigurationError si le modèle n'est pas autorisé : le bot ne démarre pas."""
+    """Construit le bot réel : agent Gemini, Meta, Kiriku et TimaLens s'ils sont configurés.
+    Suppose missing_bot_variables() vide."""
     if settings.translate_from_french:
-        # Aucun modèle de traduction n'est encore choisi (voir docs/modeles.md).
+        # Aucun modèle de traduction n'est encore choisi.
         raise LLMConfigurationError(
             "TRANSLATE_FROM_FRENCH est activé, mais aucun traducteur n'est configuré."
         )
@@ -37,7 +42,12 @@ def build_bot(
 
     # Un seul limiteur pour tout le processus : le quota Kiriku est partagé TTS + STT.
     limiter = RateLimiter(bot_settings.kiriku_requests_per_minute)
-    tts, stt = create_providers(ProviderName.AUTO, settings, limiter=limiter)
+    tts, stt = None, None
+    if settings.kvicc_tts_configured and settings.kvicc_stt_configured:
+        tts, stt = create_providers(ProviderName.KVICC, settings, limiter=limiter)
+    else:
+        # Jamais de mock en production : une fausse note vocale tromperait l'élève.
+        logger.warning("Kiriku non configuré : réponses en texte, notes vocales non transcrites.")
     return XamXamBot(
         meta=MetaClient(
             token=settings.whatsapp_token or "",
@@ -49,11 +59,16 @@ def build_bot(
             lexicon_terms=[term.term for term in pipeline.index.lexicon.terms],
             max_explanation_chars=bot_settings.max_explanation_chars,
         ),
+        agent=GeminiAgentModel(
+            api_key=settings.gemini_api_key or "",
+            model=settings.gemini_model,
+            fallback_models=[settings.gemini_fallback_model],
+        ),
         # Pas de cache STT dans le bot : aucun contenu envoyé par l'élève (photo, audio,
         # transcription) n'est conservé après traitement. Seul le cache TTS (audios
         # d'explication générés) est actif. Le cache STT reste réservé à l'évaluation.
         stt=stt,
-        tts=CachedTTSProvider(tts, settings.cache_dir / "tts"),
+        tts=CachedTTSProvider(tts, settings.cache_dir / "tts") if tts is not None else None,
         pipeline=pipeline,
         kiriku_limiter=limiter,
         hasher=IdHasher(settings.log_hash_key),
@@ -61,4 +76,7 @@ def build_bot(
         messages=messages,
         unlimited_numbers=settings.unlimited_numbers,
         state_path=(settings.state_dir or settings.cache_dir) / "bot-state.sqlite3",
+        video=build_timalens_client(settings),
+        video_voice=settings.timalens_voice,
+        video_max_credits=settings.timalens_max_credits,
     )

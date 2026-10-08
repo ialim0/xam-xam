@@ -3,7 +3,7 @@
 Entrées :
 - un dossier de photos et un fichier verite_terrain.csv
   (fichier, type_image, notion, type_calcul, donnees, resultat_attendu) ;
-- un fichier JSON de configurations à comparer (provider, modèle, prix par million de jetons).
+- un fichier JSON de configurations Gemini à comparer (modèle, prix par million de jetons).
 Chaque photo est soumise `repetitions` fois à chaque configuration pour mesurer la stabilité.
 
 Métriques par appel : JSON valide du premier coup, données correctement extraites, résultat
@@ -74,10 +74,7 @@ class ModelConfig:
     """Une configuration à comparer. Les prix sont fournis par l'utilisateur (aucun en dur)."""
 
     name: str
-    provider: str
     model: str
-    region: str | None = None
-    base_url: str | None = None
     price_input_per_million: float | None = None
     price_output_per_million: float | None = None
 
@@ -157,10 +154,7 @@ def load_configs(path: Path) -> list[ModelConfig]:
         return [
             ModelConfig(
                 name=item["nom"],
-                provider=item["provider"],
                 model=item["modele"],
-                region=item.get("region"),
-                base_url=item.get("base_url"),
                 price_input_per_million=item.get("prix_entree_par_million"),
                 price_output_per_million=item.get("prix_sortie_par_million"),
             )

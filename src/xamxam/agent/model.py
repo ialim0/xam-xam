@@ -1,0 +1,248 @@
+"""Cerveau de l'agent : un modèle qui, à chaque étape, répond ou appelle des outils.
+
+L'historique de l'agent est une liste de messages simples : `user`, `assistant` (avec ses
+`tool_calls`) et un message `tool` par résultat d'outil. GeminiAgentModel le convertit au
+format `contents` de l'API Gemini (appel de fonctions) à chaque étape. Les parties brutes
+renvoyées par Gemini sont gardées dans le message `assistant` (clé `gemini_parts`) et lui
+sont renvoyées telles quelles : Gemini 3 exige ses `thoughtSignature`.
+"""
+
+from __future__ import annotations
+
+import json
+import time
+from abc import ABC, abstractmethod
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, field
+from typing import Any
+
+import httpx
+
+from xamxam.llm.gemini import (
+    GEMINI_BASE_URL,
+    GeminiHTTP,
+    candidate_parts,
+    parts_text,
+    usage_tokens,
+)
+
+# Une étape de conversation doit rester rapide ; au-delà, repli sur le modèle suivant.
+DEFAULT_TIMEOUT = 30.0
+
+
+@dataclass(frozen=True)
+class ToolCall:
+    name: str
+    args: dict[str, Any] = field(default_factory=dict)
+    call_id: str = ""  # identifiant à rappeler dans le résultat
+    # Identifiant fourni par le modèle (à lui renvoyer), ou créé localement (à ne pas renvoyer).
+    model_id: bool = False
+
+
+@dataclass(frozen=True)
+class ModelTurn:
+    """Une réponse du modèle : texte libre et/ou appels d'outils."""
+
+    message: dict[str, Any]  # message `assistant`, à remettre tel quel dans l'historique
+    calls: tuple[ToolCall, ...] = ()
+    text: str = ""
+    input_tokens: int = 0
+    output_tokens: int = 0
+
+
+def user_message(text: str) -> dict[str, Any]:
+    return {"role": "user", "content": text}
+
+
+def tool_message(call: ToolCall, result: dict[str, Any]) -> dict[str, Any]:
+    """Message `tool` à renvoyer au modèle après l'exécution d'un outil."""
+    return {
+        "role": "tool",
+        "tool_call_id": call.call_id,
+        "model_id": call.model_id,
+        "name": call.name,
+        "content": json.dumps(result, ensure_ascii=False),
+    }
+
+
+class AgentModel(ABC):
+    name: str
+    model: str
+
+    @abstractmethod
+    def next_turn(
+        self, system: str, messages: list[dict[str, Any]], tools: list[dict[str, Any]]
+    ) -> ModelTurn:
+        """Une étape de raisonnement : réponse finale ou appels d'outils."""
+
+
+def to_gemini_contents(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Historique de l'agent → `contents` Gemini (rôles user / model, appels et résultats)."""
+    contents: list[dict[str, Any]] = []
+
+    def add(role: str, parts: list[dict[str, Any]]) -> None:
+        if not parts:
+            return
+        if contents and contents[-1]["role"] == role:
+            contents[-1]["parts"].extend(parts)
+        else:
+            contents.append({"role": role, "parts": list(parts)})
+
+    for message in messages:
+        role = message["role"]
+        if role == "user":
+            add("user", [{"text": str(message.get("content", ""))}])
+        elif role == "assistant":
+            parts = message.get("gemini_parts")
+            if parts is None:  # message écrit localement (mémoire, tests)
+                parts = [{"text": message["content"]}] if message.get("content") else []
+                for tool_call in message.get("tool_calls") or []:
+                    function = tool_call["function"]
+                    parts.append(
+                        {
+                            "functionCall": {
+                                "name": function["name"],
+                                "args": json.loads(function.get("arguments") or "{}"),
+                            }
+                        }
+                    )
+            add("model", parts)
+        elif role == "tool":
+            response: dict[str, Any] = {
+                "name": message["name"],
+                "response": json.loads(message["content"]),
+            }
+            if message.get("model_id"):
+                response["id"] = message["tool_call_id"]
+            add("user", [{"functionResponse": response}])
+    return contents
+
+
+class GeminiAgentModel(AgentModel):
+    name = "gemini"
+
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        model: str,
+        fallback_models: Sequence[str] = (),
+        base_url: str = GEMINI_BASE_URL,
+        transport: httpx.BaseTransport | None = None,
+        timeout: float = DEFAULT_TIMEOUT,
+        sleep: Callable[[float], None] = time.sleep,
+    ) -> None:
+        self.model = model
+        self._gemini = GeminiHTTP(
+            api_key=api_key,
+            models=[model, *fallback_models],
+            base_url=base_url,
+            transport=transport,
+            timeout=timeout,
+            sleep=sleep,
+        )
+
+    def __repr__(self) -> str:
+        return f"GeminiAgentModel(model={self.model!r})"
+
+    def next_turn(
+        self, system: str, messages: list[dict[str, Any]], tools: list[dict[str, Any]]
+    ) -> ModelTurn:
+        data = self._gemini.post(
+            {
+                "systemInstruction": {"parts": [{"text": system}]},
+                "contents": to_gemini_contents(messages),
+                "tools": [{"functionDeclarations": tools}],
+                "toolConfig": {"functionCallingConfig": {"mode": "AUTO"}},
+            }
+        )
+        parts = candidate_parts(data)
+        calls = []
+        for index, part in enumerate(parts):
+            function_call = part.get("functionCall")
+            if not isinstance(function_call, dict):
+                continue
+            model_id = function_call.get("id")
+            args = function_call.get("args")
+            calls.append(
+                ToolCall(
+                    name=str(function_call.get("name", "")),
+                    args=args if isinstance(args, dict) else {},
+                    call_id=str(model_id or f"local-{index}"),
+                    model_id=bool(model_id),
+                )
+            )
+        text = parts_text(parts).strip()
+        input_tokens, output_tokens = usage_tokens(data)
+        return ModelTurn(
+            message={
+                "role": "assistant",
+                "content": text,
+                "tool_calls": [_tool_call_entry(c) for c in calls],
+                "gemini_parts": parts,
+            },
+            calls=tuple(calls),
+            text=text,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+        )
+
+
+def _tool_call_entry(tool_call: ToolCall) -> dict[str, Any]:
+    return {
+        "id": tool_call.call_id,
+        "type": "function",
+        "function": {
+            "name": tool_call.name,
+            "arguments": json.dumps(tool_call.args, ensure_ascii=False),
+        },
+    }
+
+
+class ScriptedAgentModel(AgentModel):
+    """Modèle factice pour les tests : rejoue des étapes préparées et garde ce qu'il reçoit."""
+
+    name = "mock"
+    model = "scripted-agent"
+
+    def __init__(self, turns: list[ModelTurn | Exception]) -> None:
+        self._turns = list(turns)
+        self.received: list[list[dict[str, Any]]] = []
+        self.systems: list[str] = []
+
+    def next_turn(
+        self, system: str, messages: list[dict[str, Any]], tools: list[dict[str, Any]]
+    ) -> ModelTurn:
+        self.systems.append(system)
+        self.received.append(list(messages))
+        if not self._turns:
+            return say("")  # plus rien de prévu : l'agent s'arrête
+        turn = self._turns.pop(0)
+        if isinstance(turn, Exception):
+            raise turn
+        return turn
+
+
+def call(name: str, **args: Any) -> ModelTurn:
+    """Étape factice : un appel d'outil (tests)."""
+    return calls((name, args))
+
+
+def calls(*items: tuple[str, dict[str, Any]]) -> ModelTurn:
+    """Étape factice : plusieurs appels d'outils dans la même réponse (tests)."""
+    parsed = tuple(
+        ToolCall(name, dict(args), f"call{index}") for index, (name, args) in enumerate(items)
+    )
+    return ModelTurn(
+        message={
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [_tool_call_entry(c) for c in parsed],
+        },
+        calls=parsed,
+    )
+
+
+def say(text: str) -> ModelTurn:
+    """Étape factice : réponse texte finale (tests)."""
+    return ModelTurn(message={"role": "assistant", "content": text}, text=text)

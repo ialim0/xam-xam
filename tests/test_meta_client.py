@@ -86,3 +86,30 @@ async def test_errors_are_wrapped() -> None:
 
     with pytest.raises(MetaError, match="injoignable"):
         await _client(unreachable).send_text("221", "salut")
+
+
+async def test_buttons_video_and_typing_indicator_payloads() -> None:
+    bodies: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        bodies.append(json.loads(request.content))
+        return httpx.Response(200, json={"messages": [{"id": "wamid.out"}]})
+
+    client = _client(handler)
+    await client.send_buttons("221", "Bëgg nga ?", ["🔊 Écouter", "x" * 30, "c", "d"])
+    await client.send_video("221", "https://cdn.test/v.mp4", "Pythagore")
+    await client.mark_read_and_typing("wamid.in")
+    await client.send_text("221", "a" * 5000)
+
+    buttons, video, typing, text = bodies
+    action = buttons["interactive"]["action"]["buttons"]
+    assert [b["reply"]["title"] for b in action] == ["🔊 Écouter", "x" * 20, "c"]
+    assert buttons["interactive"]["type"] == "button"
+    assert video["video"] == {"link": "https://cdn.test/v.mp4", "caption": "Pythagore"}
+    assert typing == {
+        "messaging_product": "whatsapp",
+        "status": "read",
+        "message_id": "wamid.in",
+        "typing_indicator": {"type": "text"},
+    }
+    assert len(text["text"]["body"]) == 4096

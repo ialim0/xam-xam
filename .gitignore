@@ -28,18 +28,6 @@ env/
 outputs/
 .cache/
 
-# Terraform : état, plugins et valeurs locales (jamais versionnés)
-.terraform/
-*.tfstate
-*.tfstate.*
-*.tfplan
-terraform.tfvars
-.terraform.lock.hcl.bak
-crash.log
-
-# Test local du déploiement (secrets factices, cache)
-deploy/aws/.local/
-
 # Éditeurs / OS
 .vscode/
 .idea/

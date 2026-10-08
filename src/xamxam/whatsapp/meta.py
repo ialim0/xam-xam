@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 GRAPH_BASE_URL = "https://graph.facebook.com"
 # Taille maximale acceptée pour un média reçu (les images WhatsApp font quelques Mo).
 MAX_MEDIA_BYTES = 16 * 1024 * 1024
+MAX_TEXT_CHARS = 4096
 
 
 class MetaError(XamXamError):
@@ -100,8 +101,46 @@ class MetaClient:
         )
 
     async def send_text(self, to: str, body: str) -> None:
-        await self._send(to, {"type": "text", "text": {"body": body}})
+        await self._send(to, {"type": "text", "text": {"body": body[:MAX_TEXT_CHARS]}})
+
+    async def send_buttons(self, to: str, body: str, titles: list[str]) -> None:
+        """Message avec 1 à 3 boutons de réponse rapide (libellés de 20 caractères au plus)."""
+        buttons = [
+            {"type": "reply", "reply": {"id": f"b{index}", "title": title[:20]}}
+            for index, title in enumerate(titles[:3], start=1)
+        ]
+        await self._send(
+            to,
+            {
+                "type": "interactive",
+                "interactive": {
+                    "type": "button",
+                    "body": {"text": body[:1024]},
+                    "action": {"buttons": buttons},
+                },
+            },
+        )
+
+    async def mark_read_and_typing(self, message_id: str) -> None:
+        """Coche bleue et « en train d'écrire » (25 s au plus, ou jusqu'à la réponse)."""
+        await self._request(
+            "POST",
+            f"{self._api}/{self._phone_number_id}/messages",
+            json={
+                "messaging_product": "whatsapp",
+                "status": "read",
+                "message_id": message_id,
+                "typing_indicator": {"type": "text"},
+            },
+        )
 
     async def send_audio(self, to: str, media_id: str) -> None:
         # Un audio OGG Opus est présenté par WhatsApp comme une note vocale.
         await self._send(to, {"type": "audio", "audio": {"id": media_id}})
+
+    async def send_video(self, to: str, link: str, caption: str = "") -> None:
+        """Vidéo par lien HTTPS : Meta la télécharge lui-même (16 Mo au plus)."""
+        video: dict[str, str] = {"link": link}
+        if caption:
+            video["caption"] = caption
+        await self._send(to, {"type": "video", "video": video})

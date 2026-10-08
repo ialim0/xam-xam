@@ -16,12 +16,11 @@ RUN apt-get update \
 WORKDIR /app
 COPY pyproject.toml README.md LICENSE ./
 COPY src ./src
-# Extra « bedrock » : SDK AWS pour le provider LLM Bedrock (déploiement principal).
-RUN pip install ".[bedrock]"
+RUN pip install .
 # Lexique et données, lus depuis le répertoire de travail.
 COPY data ./data
 
-# Utilisateur sans privilèges ; /cache reçoit le bucket Cloud Storage en production.
+# Utilisateur sans privilèges ; montez un volume sur /cache pour garder le cache TTS.
 RUN useradd --create-home --uid 10001 xamxam \
     && mkdir -p /cache && chown xamxam:xamxam /cache
 USER xamxam

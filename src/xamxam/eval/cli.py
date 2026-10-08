@@ -126,7 +126,7 @@ def build_parser() -> argparse.ArgumentParser:
     unblind.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     unblind.add_argument("--overwrite-human", action="store_true")
 
-    llm = commands.add_parser("llm", help="Compare des modèles de langage sur des photos.")
+    llm = commands.add_parser("llm", help="Compare des modèles Gemini sur des photos.")
     llm.add_argument("--photos", type=Path, required=True, help="Dossier des photos d'exercices.")
     llm.add_argument(
         "--verite", type=Path, help="Vérité terrain (défaut : <photos>/verite_terrain.csv)."
@@ -137,11 +137,6 @@ def build_parser() -> argparse.ArgumentParser:
     llm.add_argument("--repetitions", type=int, default=3)
     llm.add_argument("--lexicon", type=Path, default=DEFAULT_LEXICON_PATH)
     llm.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR / "llm")
-    llm.add_argument(
-        "--allow-unlisted",
-        action="store_true",
-        help="Autorise des modèles absents de la liste blanche (évaluation de candidats).",
-    )
     return parser
 
 
@@ -263,14 +258,10 @@ def _llm(args: argparse.Namespace) -> None:
         ConfiguredModel(
             config,
             build_llm(
-                config.provider,
                 config.model,
+                api_key=settings.gemini_api_key or "",
                 lexicon_terms=terms,
                 max_explanation_chars=max_chars,
-                region=config.region,
-                base_url=config.base_url,
-                api_key=settings.selfhosted_api_key,
-                enforce_allowlist=not args.allow_unlisted,
             ),
         )
         for config in load_configs(args.configs)

@@ -26,10 +26,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Provider Amazon Bedrock : seul composant qui dépend du SDK AWS (image Docker de production).
-bedrock = [
-    "boto3>=1.35",
-]
 dev = [
     "pytest>=8.0",
     "ruff>=0.6",

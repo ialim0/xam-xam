@@ -39,6 +39,9 @@ def create_app(
     bot: XamXamBot | None = None,
 ) -> FastAPI:
     """Construit l'application ; les dépendances sont injectables pour les tests."""
+    if not logging.getLogger().handlers:
+        # Sous uvicorn, seuls ses propres loggers sont configurés : on affiche aussi les nôtres.
+        logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
     settings = settings or Settings.from_env()
     bot_settings = BotSettings.from_env()
     pipeline = pipeline or XamXamPipeline.from_lexicon_file(
@@ -68,6 +71,8 @@ def create_app(
             "tts": tts.name,
             "bot_ready": bot is not None,
             "llm": bot.llm_info if bot is not None else None,
+            "voice": bot.voice_enabled if bot is not None else False,
+            "video": bot.video_enabled if bot is not None else False,
             "missing_variables": missing,
         }
 

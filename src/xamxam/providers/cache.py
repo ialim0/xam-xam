@@ -1,7 +1,7 @@
 """Caches disque des audios TTS et des transcriptions STT, indexés par empreinte SHA-256.
 
-En développement, ils vivent dans .cache/ ; en production, sur un bucket Cloud Storage
-monté comme volume, pour survivre aux redémarrages.
+Ils vivent dans .cache/ (XAMXAM_CACHE_DIR) ; dans un conteneur, montez un volume sur ce
+dossier pour qu'ils survivent aux redémarrages.
 """
 
 from __future__ import annotations

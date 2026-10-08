@@ -1,7 +1,8 @@
-"""Tests de bout en bout simulés : Meta, LLM et Kiriku remplacés par des doublures,
-ffmpeg réel (installé dans la CI)."""
+"""Tests de bout en bout simulés : Meta, Gemini (agent et résolution), Kiriku et TimaLens
+remplacés par des doublures, ffmpeg réel (installé dans la CI)."""
 
 import functools
+import json
 import logging
 import shutil
 import tempfile
@@ -14,15 +15,22 @@ from fakes import (
     STUDENT,
     FakeGraph,
     FakeSTT,
+    FakeTimaLens,
     RecordingTTS,
     audio_message,
     build_bot,
+    button_reply,
     image_message,
     make_solution,
     text_message,
+    tool_results,
     webhook_payload,
 )
+from xamxam.agent import ScriptedAgentModel
+from xamxam.agent.model import call, calls, say
+from xamxam.agent.prompt import CREATE_VIDEO, OFFER_BUTTONS, SEND_AUDIO, SEND_TEXT, SOLVE
 from xamxam.config import Settings
+from xamxam.llm import LLMError
 from xamxam.llm.mock import ScriptedLLM
 from xamxam.media import wav_to_ogg_opus
 from xamxam.pipeline import XamXamPipeline
@@ -40,6 +48,17 @@ pytestmark = [
 MESSAGES = BotMessages()
 APP_SECRET = "secret-app-test"
 JPEG = b"\xff\xd8\xff\xe0 photo d'exercice"
+ANSWER = "BC = √52 ≈ 7,21 cm"
+SPOKEN = "Données yi : AB = 4 cm, AC = 6 cm. BC² = AB² + AC², kon BC = √52."
+BUTTONS = ["🔊 Écouter", "🎬 Vidéo", "✅ Compris"]
+# Ce que fait un agent bien élevé devant un exercice : résoudre, expliquer, proposer.
+SOLVE_THEN_EXPLAIN = [
+    call(SOLVE, question=""),
+    calls(
+        (SEND_TEXT, {"texte": f"Tontu bi : {ANSWER}"}),
+        (OFFER_BUTTONS, {"texte": "Bëgg nga ?", "boutons": BUTTONS}),
+    ),
+]
 
 
 @functools.cache
@@ -54,21 +73,19 @@ async def _deliver(bot, *messages) -> None:
     await bot.drain()
 
 
-def _assert_explanation_sent(graph: FakeGraph) -> None:
-    assert graph.kinds == ["text", "audio", "text"]
-    ack, final = graph.texts
-    assert ack == MESSAGES.ack
-    assert final == "Tontu bi : BC = √52 ≈ 7,21 cm"
-    [upload] = graph.uploads
-    assert b"OggS" in upload  # note vocale OGG Opus
-    assert all(m["to"] == STUDENT for m in graph.sent)
+def _student_message(agent: ScriptedAgentModel, run: int = 0) -> str:
+    """Dernier message de l'élève tel que l'agent l'a reçu à sa première étape."""
+    return agent.received[run][-1]["content"]
 
 
-async def test_photo_in_voice_note_out_through_signed_webhook(pipeline: XamXamPipeline) -> None:
+# --- Exercice en photo -------------------------------------------------------------------
+
+
+async def test_photo_is_solved_explained_and_buttons_offered(pipeline: XamXamPipeline) -> None:
     graph = FakeGraph(media={"img-1": (JPEG, "image/jpeg")})
     llm = ScriptedLLM([make_solution()])
-    tts = RecordingTTS()
-    bot = build_bot(graph, llm, pipeline=pipeline, tts=tts)
+    agent = ScriptedAgentModel(list(SOLVE_THEN_EXPLAIN))
+    bot = build_bot(graph, llm, pipeline=pipeline, agent=agent)
     settings = Settings(whatsapp_app_secret=APP_SECRET, whatsapp_verify_token="v")
     app = create_app(settings, pipeline=pipeline, tts=MockTTSProvider(), bot=bot)
 
@@ -87,105 +104,66 @@ async def test_photo_in_voice_note_out_through_signed_webhook(pipeline: XamXamPi
     assert response.status_code == 200
     await bot.drain()
 
-    _assert_explanation_sent(graph)
+    assert graph.read_receipts == ["wamid.img"]  # coche bleue + « en train d'écrire »
+    assert graph.kinds == ["text", "text", "interactive"]
+    assert graph.texts == [MESSAGES.ack, f"Tontu bi : {ANSWER}"]
+    assert graph.buttons == [BUTTONS]
+    assert all(m["to"] == STUDENT for m in graph.sent)
+    # Gemini (résolution) a reçu la photo ; l'agent, seulement un repère textuel.
     [problem] = llm.calls
     assert problem.image == JPEG and problem.image_mime_type == "image/jpeg"
-    # L'explication passe par Xam-Xam : symboles convertis en mots, termes réécrits.
-    [spoken] = tts.texts
-    assert "ipoteniws" in spoken and "teyorem bu Pitagor" in spoken
-    assert "aa bee égale quatre centimètres" in spoken
-    assert not set("²=√") & set(spoken)
-
-
-async def test_bot_can_self_check_the_generated_formula(pipeline: XamXamPipeline) -> None:
-    graph = FakeGraph(media={"img-1": (JPEG, "image/jpeg")})
-    stt = FakeSTT("bc au carré égale ab au carré plus ac au carré")
-    tts = RecordingTTS()
-    bot = build_bot(
-        graph,
-        ScriptedLLM([make_solution()]),
-        pipeline=pipeline,
-        stt=stt,
-        tts=tts,
-        settings=BotSettings(grouping_window_seconds=0, audio_self_check=True),
-    )
-    await _deliver(bot, image_message())
-    _assert_explanation_sent(graph)
-    assert stt.received  # le WAV sortant a été contrôlé
-    assert tts.texts
-
-
-async def test_photo_and_voice_note_are_grouped(pipeline: XamXamPipeline) -> None:
-    graph = FakeGraph(media={"img-1": (JPEG, "image/jpeg"), "aud-1": (_voice_note(5), "audio/ogg")})
-    llm = ScriptedLLM([make_solution()])
-    stt = FakeSTT("BC lan la wara gis ?")
-    settings = BotSettings(grouping_window_seconds=0.3)
-    bot = build_bot(graph, llm, pipeline=pipeline, stt=stt, settings=settings)
-
-    await _deliver(bot, image_message(), audio_message())
-
-    _assert_explanation_sent(graph)  # un seul accusé, une seule explication
-    [problem] = llm.calls
-    assert problem.image == JPEG
-    assert problem.transcript == "BC lan la wara gis ?"
-    # Une note de moins de 60 s part telle quelle (OGG accepté par le STT Kiriku).
-    [audio] = stt.received
-    assert audio.startswith(b"OggS")
-
-
-async def test_long_voice_note_is_split_into_60_second_chunks(pipeline: XamXamPipeline) -> None:
-    graph = FakeGraph(media={"aud-1": (_voice_note(70), "audio/ogg")})
-    stt = FakeSTT("waxtu")
-    llm = ScriptedLLM([make_solution()])
-    bot = build_bot(graph, llm, pipeline=pipeline, stt=stt)
-
-    await _deliver(bot, audio_message())
-
-    assert [audio[:4] for audio in stt.received] == [b"RIFF", b"RIFF"]
-    assert llm.calls[0].transcript == "waxtu waxtu"
-    _assert_explanation_sent(graph)
-
-
-async def test_voice_note_over_120_seconds_is_refused(pipeline: XamXamPipeline) -> None:
-    graph = FakeGraph(media={"aud-1": (_voice_note(125), "audio/ogg")})
-    llm = ScriptedLLM([])
-    stt = FakeSTT()
-    bot = build_bot(graph, llm, pipeline=pipeline, stt=stt)
-
-    await _deliver(bot, audio_message())
-
-    assert graph.texts == [MESSAGES.ack, MESSAGES.audio_too_long]
-    assert stt.received == [] and llm.calls == []
+    assert _student_message(agent) == "[photo de l'exercice jointe]"
+    [solved] = tool_results(agent, 1)
+    assert solved["statut"] == "ok" and solved["verification"] == "verifie"
+    assert solved["reponse_finale"] == ANSWER and solved["explication_wo"]
 
 
 async def test_wrong_result_is_corrected_once(pipeline: XamXamPipeline) -> None:
     graph = FakeGraph(media={"img-1": (JPEG, "image/jpeg")})
     llm = ScriptedLLM([make_solution(resultat="7,5"), make_solution()])
-    bot = build_bot(graph, llm, pipeline=pipeline)
+    agent = ScriptedAgentModel(list(SOLVE_THEN_EXPLAIN))
+    bot = build_bot(graph, llm, pipeline=pipeline, agent=agent)
 
     await _deliver(bot, image_message())
 
     first, second = llm.calls
-    assert second.previous is not None
     assert second.correction == "Le résultat correct est 2√13 ≈ 7,21."
     assert second.image == first.image
-    _assert_explanation_sent(graph)
+    assert tool_results(agent, 1)[0]["verification"] == "corrige"
 
 
-async def test_second_failure_sends_apology_and_is_logged(
+async def test_second_failure_withholds_the_result(
     pipeline: XamXamPipeline, caplog: pytest.LogCaptureFixture
 ) -> None:
     graph = FakeGraph(media={"img-1": (JPEG, "image/jpeg")})
     llm = ScriptedLLM([make_solution(resultat="7,5"), make_solution(resultat="8")])
-    bot = build_bot(graph, llm, pipeline=pipeline)
+    agent = ScriptedAgentModel([call(SOLVE, question=""), say("Mënuma ko wóoral.")])
+    bot = build_bot(graph, llm, pipeline=pipeline, agent=agent)
 
     with caplog.at_level(logging.INFO):
         await _deliver(bot, image_message())
 
-    assert graph.texts == [MESSAGES.ack, MESSAGES.apology]
-    assert graph.uploads == []
+    # Le résultat faux n'est jamais transmis à l'agent.
+    assert tool_results(agent, 1) == [{"statut": "verification_echouee"}]
+    assert graph.texts == [MESSAGES.ack, "Mënuma ko wóoral."]
     assert "Vérification échouée après correction" in caplog.text
-    assert '"outcome": "verification_echouee"' in caplog.text
+    assert '"verification": "echec_apres_correction"' in caplog.text
+
+
+@pytest.mark.parametrize("status", ["image_illisible", "hors_sujet"])
+async def test_unusable_photo_is_reported_to_the_agent(
+    pipeline: XamXamPipeline, status: str
+) -> None:
+    graph = FakeGraph(media={"img-1": (JPEG, "image/jpeg")})
+    agent = ScriptedAgentModel([call(SOLVE, question=""), say("Yónnee ma beneen nataal.")])
+    bot = build_bot(
+        graph, ScriptedLLM([make_solution(statut=status)]), pipeline=pipeline, agent=agent
+    )
+
+    await _deliver(bot, image_message())
+
+    assert tool_results(agent, 1) == [{"statut": status}]
+    assert graph.texts[-1] == "Yónnee ma beneen nataal."
 
 
 async def test_unverifiable_notion_is_answered_and_logged(
@@ -193,135 +171,390 @@ async def test_unverifiable_notion_is_answered_and_logged(
 ) -> None:
     graph = FakeGraph(media={"img-1": (JPEG, "image/jpeg")})
     solution = make_solution(
-        notion="autre",
-        calcul={"type": "aucun", "donnees": [], "resultat": ""},
-        reponse_finale="BC = √52 ≈ 7,21 cm",
+        notion="autre", calcul={"type": "aucun", "donnees": [], "resultat": ""}
     )
-    bot = build_bot(graph, ScriptedLLM([solution]), pipeline=pipeline)
+    agent = ScriptedAgentModel(list(SOLVE_THEN_EXPLAIN))
+    bot = build_bot(graph, ScriptedLLM([solution]), pipeline=pipeline, agent=agent)
 
     with caplog.at_level(logging.INFO):
         await _deliver(bot, image_message())
 
-    _assert_explanation_sent(graph)
+    assert tool_results(agent, 1)[0]["verification"] == "non_verifie"
     assert "Réponse non vérifiée" in caplog.text
-    assert '"verification": "non_verifie"' in caplog.text
 
 
-@pytest.mark.parametrize(
-    ("status", "reply"),
-    [("image_illisible", MESSAGES.unreadable_image), ("hors_sujet", MESSAGES.off_topic)],
-)
-async def test_unusable_photo(pipeline: XamXamPipeline, status: str, reply: str) -> None:
-    graph = FakeGraph(media={"img-1": (JPEG, "image/jpeg")})
-    bot = build_bot(graph, ScriptedLLM([make_solution(statut=status)]), pipeline=pipeline)
-
-    await _deliver(bot, image_message())
-
-    assert graph.texts == [MESSAGES.ack, reply]
+# --- Conversation ------------------------------------------------------------------------
 
 
-async def test_text_only_gets_help(pipeline: XamXamPipeline) -> None:
+async def test_greeting_gets_a_short_text_reply_without_ack(pipeline: XamXamPipeline) -> None:
     graph = FakeGraph()
     llm = ScriptedLLM([])
-    bot = build_bot(graph, llm, pipeline=pipeline)
+    agent = ScriptedAgentModel([say("Maa ngi fi ! Yónnee ma sa exercice.")])
+    bot = build_bot(graph, llm, pipeline=pipeline, agent=agent)
 
     await _deliver(bot, text_message("Salaam aleekum"))
 
-    assert graph.texts == [MESSAGES.ack, MESSAGES.help]
+    assert graph.texts == ["Maa ngi fi ! Yónnee ma sa exercice."]
     assert llm.calls == []
+    assert _student_message(agent) == "Salaam aleekum"
+    assert "Audio (note vocale) : disponible" in agent.systems[0]
 
 
-async def test_written_math_question_is_answered(pipeline: XamXamPipeline) -> None:
+async def test_written_exercise_is_passed_to_the_solver(pipeline: XamXamPipeline) -> None:
     graph = FakeGraph()
     llm = ScriptedLLM([make_solution()])
-    bot = build_bot(graph, llm, pipeline=pipeline)
+    question = "AB mesure 4 cm, AC mesure 6 cm. Calcule BC."
+    agent = ScriptedAgentModel([call(SOLVE, question=question), *SOLVE_THEN_EXPLAIN[1:]])
+    bot = build_bot(graph, llm, pipeline=pipeline, agent=agent)
 
-    await _deliver(bot, text_message("AB mesure 4 cm, AC mesure 6 cm. Calcule BC."))
+    await _deliver(bot, text_message(question))
 
-    _assert_explanation_sent(graph)
-    assert llm.calls[0].text == "AB mesure 4 cm, AC mesure 6 cm. Calcule BC."
-    assert llm.calls[0].image is None and llm.calls[0].transcript is None
-
-
-async def test_written_question_is_bounded(pipeline: XamXamPipeline) -> None:
-    graph = FakeGraph()
-    llm = ScriptedLLM([])
-    bot = build_bot(graph, llm, pipeline=pipeline)
-
-    await _deliver(bot, text_message("a" * 2001))
-
-    assert graph.texts == [MESSAGES.ack, MESSAGES.text_too_long]
-    assert llm.calls == []
+    assert llm.calls[0].text == question and llm.calls[0].image is None
 
 
-async def test_duplicate_notifications_are_processed_once(pipeline: XamXamPipeline) -> None:
-    graph = FakeGraph(media={"img-1": (JPEG, "image/jpeg")})
-    llm = ScriptedLLM([make_solution()])
-    bot = build_bot(graph, llm, pipeline=pipeline)
-
-    await _deliver(bot, image_message())
-    await _deliver(bot, image_message())  # même identifiant de message
-
-    assert len(llm.calls) == 1
-
-
-async def test_completed_notification_is_not_replayed_after_restart(
-    pipeline: XamXamPipeline, tmp_path: Path
+async def test_memory_carries_the_conversation_and_escalates_to_video(
+    pipeline: XamXamPipeline,
 ) -> None:
-    state_path = tmp_path / "bot-state.sqlite3"
-    first_graph = FakeGraph(media={"img-1": (JPEG, "image/jpeg")})
-    first = build_bot(
-        first_graph,
-        ScriptedLLM([make_solution()]),
-        pipeline=pipeline,
-        state_path=state_path,
+    graph = FakeGraph(media={"img-1": (JPEG, "image/jpeg")})
+    tts = RecordingTTS()
+    timalens = FakeTimaLens()
+    agent = ScriptedAgentModel(
+        [
+            *SOLVE_THEN_EXPLAIN,
+            say(""),
+            # « dégguma » : reformulation en audio.
+            call(SEND_AUDIO, texte_wolof=SPOKEN),
+            say(""),
+            # Toujours pas compris : annonce audio, puis vidéo lancée par l'agent.
+            calls(
+                (SEND_AUDIO, {"texte_wolof": "Xaaral ma tuuti, maa ngi la defar ab vidéo."}),
+                (CREATE_VIDEO, {"texte_wolof": SPOKEN, "titre": "Pythagore"}),
+            ),
+            say(""),
+        ]
     )
-    await _deliver(first, image_message())
-    await first.aclose()
-
-    second_graph = FakeGraph(media={"img-1": (JPEG, "image/jpeg")})
-    second_llm = ScriptedLLM([])
-    second = build_bot(second_graph, second_llm, pipeline=pipeline, state_path=state_path)
-    await _deliver(second, image_message())
-    await second.aclose()
-
-    assert len(first_graph.uploads) == 1
-    assert second_graph.sent == [] and second_llm.calls == []
-
-
-async def test_user_limit_and_unlimited_numbers(pipeline: XamXamPipeline) -> None:
-    settings = BotSettings(grouping_window_seconds=0, user_requests_per_hour=1)
-    graph = FakeGraph(media={"img-1": (JPEG, "image/jpeg")})
-    bot = build_bot(graph, ScriptedLLM([make_solution()] * 2), pipeline=pipeline, settings=settings)
-
-    await _deliver(bot, image_message("wamid.1"))
-    await _deliver(bot, image_message("wamid.2"))
-    assert graph.texts[-1] == MESSAGES.rate_limited
-
-    graph = FakeGraph(media={"img-1": (JPEG, "image/jpeg")})
     bot = build_bot(
         graph,
-        ScriptedLLM([make_solution()] * 2),
+        ScriptedLLM([make_solution()]),
         pipeline=pipeline,
-        settings=settings,
-        unlimited=frozenset({STUDENT}),
+        tts=tts,
+        agent=agent,
+        video=timalens.client(),
     )
+
     await _deliver(bot, image_message("wamid.1"))
-    await _deliver(bot, image_message("wamid.2"))
-    assert MESSAGES.rate_limited not in graph.texts
-    assert len(graph.uploads) == 2
+    await _deliver(bot, text_message("dégguma", "wamid.2"))
+    await _deliver(bot, button_reply("🎬 Vidéo", "wamid.3"))
+
+    # Deuxième tour : l'agent voit l'historique et l'état de l'exercice.
+    second_turn = agent.received[3]
+    history = json.dumps(second_turn, ensure_ascii=False)
+    assert "[exercice résolu]" in history and f"Tontu bi : {ANSWER}" in history
+    assert second_turn[-1]["content"] == "dégguma"
+    assert "Audio déjà envoyé pour l'exercice en cours : non." in agent.systems[3]
+    assert "Audio déjà envoyé pour l'exercice en cours : oui." in agent.systems[5]
+    assert _student_message(agent, 5) == "🎬 Vidéo"  # clic sur le bouton = texte
+
+    assert graph.kinds[-3:] == ["audio", "audio", "video"]
+    video = graph.sent[-1]["video"]
+    assert video["link"] == "https://cdn.timalens.test/p1.mp4"
+    assert video["caption"] == "Vidéo Xam-Xam : Pythagore"
+    assert tool_results(agent, 6)[1] == {"statut": "lancee", "delai": "quelques minutes"}
+    # La narration est la voix Kiriku du texte de l'agent, passé par Xam-Xam.
+    assert len(timalens.uploads) == 1
+    assert "ipoteniws" not in tts.texts[-1] and not set("²=√") & set(tts.texts[-1])
+
+
+async def test_audio_reply_goes_through_xamxam(pipeline: XamXamPipeline) -> None:
+    graph = FakeGraph()
+    tts = RecordingTTS()
+    text = "BC mooy hypoténuse bi. AB² = 4 cm."
+    agent = ScriptedAgentModel([call(SEND_AUDIO, texte_wolof=text)])
+    bot = build_bot(graph, ScriptedLLM([]), pipeline=pipeline, tts=tts, agent=agent)
+
+    await _deliver(bot, text_message("Wax ma ko ci kàddu"))
+
+    assert graph.kinds == ["audio"]
+    [upload] = graph.uploads
+    assert b"OggS" in upload
+    [spoken] = tts.texts
+    assert "ipoteniws" in spoken and "aa bee au carré égale quatre centimètres" in spoken
+    assert not set("²=√") & set(spoken)
+
+
+async def test_bot_can_self_check_the_generated_formula(pipeline: XamXamPipeline) -> None:
+    graph = FakeGraph()
+    stt = FakeSTT("bc au carré égale ab au carré plus ac au carré")
+    agent = ScriptedAgentModel([call(SEND_AUDIO, texte_wolof="BC² = AB² + AC²")])
+    bot = build_bot(
+        graph,
+        ScriptedLLM([]),
+        pipeline=pipeline,
+        stt=stt,
+        agent=agent,
+        settings=BotSettings(grouping_window_seconds=0, audio_self_check=True),
+    )
+    await _deliver(bot, text_message("audio"))
+    assert graph.kinds == ["audio"]
+    assert stt.received  # le WAV sortant a été contrôlé
+
+
+# --- Notes vocales -----------------------------------------------------------------------
+
+
+async def test_photo_and_voice_note_are_grouped(pipeline: XamXamPipeline) -> None:
+    graph = FakeGraph(media={"img-1": (JPEG, "image/jpeg"), "aud-1": (_voice_note(5), "audio/ogg")})
+    stt = FakeSTT("BC lan la wara gis ?")
+    agent = ScriptedAgentModel(list(SOLVE_THEN_EXPLAIN))
+    settings = BotSettings(grouping_window_seconds=0.3, text_grouping_seconds=0.1)
+    bot = build_bot(
+        graph,
+        ScriptedLLM([make_solution()]),
+        pipeline=pipeline,
+        stt=stt,
+        agent=agent,
+        settings=settings,
+    )
+
+    await _deliver(bot, image_message(), audio_message())
+
+    assert graph.texts.count(MESSAGES.ack) == 1  # un seul accusé, un seul tour d'agent
+    assert _student_message(agent) == (
+        "[photo de l'exercice jointe]\n[note vocale] BC lan la wara gis ?"
+    )
+    [audio] = stt.received  # moins de 60 s : envoyée telle quelle (OGG accepté)
+    assert audio.startswith(b"OggS")
+
+
+async def test_long_voice_note_is_split_into_60_second_chunks(pipeline: XamXamPipeline) -> None:
+    graph = FakeGraph(media={"aud-1": (_voice_note(70), "audio/ogg")})
+    stt = FakeSTT("waxtu")
+    agent = ScriptedAgentModel([say("Waaw.")])
+    bot = build_bot(graph, ScriptedLLM([]), pipeline=pipeline, stt=stt, agent=agent)
+
+    await _deliver(bot, audio_message())
+
+    assert [audio[:4] for audio in stt.received] == [b"RIFF", b"RIFF"]
+    assert _student_message(agent) == "[note vocale] waxtu waxtu"
+
+
+async def test_voice_note_over_120_seconds_is_refused(pipeline: XamXamPipeline) -> None:
+    graph = FakeGraph(media={"aud-1": (_voice_note(125), "audio/ogg")})
+    stt = FakeSTT()
+    agent = ScriptedAgentModel([])
+    bot = build_bot(graph, ScriptedLLM([]), pipeline=pipeline, stt=stt, agent=agent)
+
+    await _deliver(bot, audio_message())
+
+    assert graph.texts == [MESSAGES.ack, MESSAGES.audio_too_long]
+    assert stt.received == [] and agent.received == []
 
 
 async def test_long_queue_warns_the_student(pipeline: XamXamPipeline) -> None:
     limiter = RateLimiter(30)
     for _ in range(20):  # 20 requêtes déjà en file : 40 s d'attente
         limiter.reserve()
-    graph = FakeGraph(media={"img-1": (JPEG, "image/jpeg")})
-    bot = build_bot(graph, ScriptedLLM([make_solution()]), pipeline=pipeline, limiter=limiter)
+    graph = FakeGraph(media={"aud-1": (_voice_note(3), "audio/ogg")})
+    agent = ScriptedAgentModel([say("Waaw.")])
+    bot = build_bot(graph, ScriptedLLM([]), pipeline=pipeline, limiter=limiter, agent=agent)
 
-    await _deliver(bot, image_message())
+    await _deliver(bot, audio_message())
 
     assert graph.texts[:2] == [MESSAGES.ack, MESSAGES.wait_notice]
+
+
+# --- Sans Kiriku -------------------------------------------------------------------------
+
+
+async def test_without_kiriku_audio_is_announced_and_voice_tool_unavailable(
+    pipeline: XamXamPipeline,
+) -> None:
+    graph = FakeGraph(media={"aud-1": (b"OggS", "audio/ogg")})
+    agent = ScriptedAgentModel(
+        [call(SEND_AUDIO, texte_wolof="Salaam"), say("Bindal sa laaj, su la neexee.")]
+    )
+    bot = build_bot(graph, ScriptedLLM([]), pipeline=pipeline, voice=False, agent=agent)
+
+    await _deliver(bot, audio_message())
+
+    assert not bot.voice_enabled
+    assert "transcription est indisponible" in _student_message(agent)
+    assert "Audio (note vocale) : indisponible" in agent.systems[0]
+    assert tool_results(agent, 1) == [{"statut": "indisponible"}]
+    assert graph.kinds == ["text", "text"] and graph.uploads == []
+
+
+# --- Vidéo -------------------------------------------------------------------------------
+
+
+async def test_video_without_kiriku_uses_a_timalens_voice(pipeline: XamXamPipeline) -> None:
+    graph = FakeGraph()
+    timalens = FakeTimaLens()
+    agent = ScriptedAgentModel([call(CREATE_VIDEO, texte_wolof=SPOKEN, titre="Pythagore")])
+    bot = build_bot(
+        graph,
+        ScriptedLLM([]),
+        pipeline=pipeline,
+        voice=False,
+        agent=agent,
+        video=timalens.client(),
+    )
+
+    await _deliver(bot, text_message("vidéo"))
+
+    assert graph.kinds == ["video"]
+    assert "POST /assets/custom-audio" not in timalens.paths
+    project = timalens.requests[0][2]
+    assert project["source_text"] == SPOKEN
+    assert (project["source_mode"], project["language"]) == ("verbatim", "wo")
+    assert project["voice_preset"] == "soynade_wo_female"
+    assert timalens.requests[-3][2] == {"quote_token": "QT"}
+
+
+async def test_video_quota_and_single_video_in_progress(pipeline: XamXamPipeline) -> None:
+    graph = FakeGraph()
+    video = (CREATE_VIDEO, {"texte_wolof": SPOKEN, "titre": "Thalès"})
+    agent = ScriptedAgentModel([calls(video, video), say("ok"), calls(video), say("ok")])
+    bot = build_bot(
+        graph,
+        ScriptedLLM([]),
+        pipeline=pipeline,
+        agent=agent,
+        video=FakeTimaLens().client(),
+        settings=BotSettings(grouping_window_seconds=0, videos_per_day=1),
+    )
+
+    await _deliver(bot, text_message("vidéo", "wamid.1"))
+    await _deliver(bot, text_message("encore", "wamid.2"))
+
+    assert tool_results(agent, 1) == [
+        {"statut": "lancee", "delai": "quelques minutes"},
+        {"statut": "refusee", "raison": "une vidéo est déjà en préparation"},
+    ]
+    assert tool_results(agent, 3) == [
+        {"statut": "refusee", "raison": "quota de vidéos du jour atteint"}
+    ]
+    assert "0 restante(s)" in agent.systems[2]
+    assert graph.kinds.count("video") == 1
+
+
+async def test_failed_video_is_reported(pipeline: XamXamPipeline) -> None:
+    graph = FakeGraph()
+    timalens = FakeTimaLens(states=["generating", "failed"])
+    agent = ScriptedAgentModel([call(CREATE_VIDEO, texte_wolof=SPOKEN, titre="x"), say("ok")])
+    bot = build_bot(graph, ScriptedLLM([]), pipeline=pipeline, agent=agent, video=timalens.client())
+
+    await _deliver(bot, text_message("vidéo"))
+
+    assert graph.texts[-1] == MESSAGES.video_failed
+    assert "POST /projects/p1/confirm" not in timalens.paths
+
+
+# --- Robustesse --------------------------------------------------------------------------
+
+
+async def test_agent_failure_and_silence_fall_back_to_error_message(
+    pipeline: XamXamPipeline, caplog: pytest.LogCaptureFixture
+) -> None:
+    graph = FakeGraph()
+    bot = build_bot(
+        graph,
+        ScriptedLLM([]),
+        pipeline=pipeline,
+        agent=ScriptedAgentModel([LLMError("API Gemini : erreur 503.")]),
+    )
+    with caplog.at_level(logging.INFO):
+        await _deliver(bot, text_message("salut", "wamid.1"))
+    assert graph.texts == [MESSAGES.error]
+    assert '"error": "LLMError"' in caplog.text
+
+    # Un agent qui tourne en rond est arrêté, et l'élève reçoit quand même une réponse.
+    graph = FakeGraph()
+    looping = ScriptedAgentModel([call("outil_inexistant")] * 10)
+    bot = build_bot(graph, ScriptedLLM([]), pipeline=pipeline, agent=looping)
+    await _deliver(bot, text_message("salut", "wamid.2"))
+    assert len(looping.received) == BotSettings().agent_max_steps
+    assert tool_results(looping, 1) == [
+        {"statut": "erreur", "detail": "outil inconnu : outil_inexistant"}
+    ]
+    assert graph.texts == [MESSAGES.error]
+
+
+async def test_written_question_is_bounded(pipeline: XamXamPipeline) -> None:
+    graph = FakeGraph()
+    agent = ScriptedAgentModel([])
+    bot = build_bot(graph, ScriptedLLM([]), pipeline=pipeline, agent=agent)
+
+    await _deliver(bot, text_message("a" * 2001))
+
+    assert graph.texts == [MESSAGES.text_too_long]
+    assert agent.received == []
+
+
+async def test_duplicate_notifications_are_processed_once(pipeline: XamXamPipeline) -> None:
+    graph = FakeGraph()
+    agent = ScriptedAgentModel([say("un"), say("deux")])
+    bot = build_bot(graph, ScriptedLLM([]), pipeline=pipeline, agent=agent)
+
+    await _deliver(bot, text_message("salut"))
+    await _deliver(bot, text_message("salut"))  # même identifiant de message
+
+    assert graph.texts == ["un"]
+
+
+async def test_completed_notification_is_not_replayed_after_restart(
+    pipeline: XamXamPipeline, tmp_path: Path
+) -> None:
+    state_path = tmp_path / "bot-state.sqlite3"
+    first_graph = FakeGraph()
+    first = build_bot(
+        first_graph,
+        ScriptedLLM([]),
+        pipeline=pipeline,
+        state_path=state_path,
+        agent=ScriptedAgentModel([say("un")]),
+    )
+    await _deliver(first, text_message("salut"))
+    await first.aclose()
+
+    second_graph = FakeGraph()
+    second_agent = ScriptedAgentModel([say("deux")])
+    second = build_bot(
+        second_graph,
+        ScriptedLLM([]),
+        pipeline=pipeline,
+        state_path=state_path,
+        agent=second_agent,
+    )
+    await _deliver(second, text_message("salut"))
+    await second.aclose()
+
+    assert first_graph.texts == ["un"]
+    assert second_graph.sent == [] and second_agent.received == []
+
+
+async def test_user_limit_and_unlimited_numbers(pipeline: XamXamPipeline) -> None:
+    settings = BotSettings(grouping_window_seconds=0, user_requests_per_hour=1)
+    graph = FakeGraph()
+    agent = ScriptedAgentModel([say("un"), say("deux")])
+    bot = build_bot(graph, ScriptedLLM([]), pipeline=pipeline, settings=settings, agent=agent)
+
+    await _deliver(bot, text_message("a", "wamid.1"))
+    await _deliver(bot, text_message("b", "wamid.2"))
+    assert graph.texts == ["un", MESSAGES.rate_limited]
+
+    graph = FakeGraph()
+    bot = build_bot(
+        graph,
+        ScriptedLLM([]),
+        pipeline=pipeline,
+        settings=settings,
+        agent=ScriptedAgentModel([say("un"), say("deux")]),
+        unlimited=frozenset({STUDENT}),
+    )
+    await _deliver(bot, text_message("a", "wamid.1"))
+    await _deliver(bot, text_message("b", "wamid.2"))
+    assert graph.texts == ["un", "deux"]
 
 
 async def test_failures_are_reported_without_content(
@@ -345,17 +578,18 @@ async def test_logs_contain_no_personal_content_and_media_are_deleted(
         media={"img-1": (JPEG, "image/jpeg"), "aud-1": (_voice_note(65), "audio/ogg")}
     )
     stt = FakeSTT("sama turu Awa la, damay laaj")
-    bot = build_bot(graph, ScriptedLLM([make_solution()]), pipeline=pipeline, stt=stt)
+    agent = ScriptedAgentModel([*SOLVE_THEN_EXPLAIN, call(SEND_AUDIO, texte_wolof=SPOKEN)])
+    bot = build_bot(graph, ScriptedLLM([make_solution()]), pipeline=pipeline, stt=stt, agent=agent)
 
     with caplog.at_level(logging.DEBUG):
         await _deliver(bot, image_message(), audio_message(), text_message("sama numéro"))
 
-    _assert_explanation_sent(graph)
+    assert "audio" in graph.kinds
     logs = caplog.text
     for secret in (STUDENT, "Awa", "damay laaj", "sama numéro", "hypoténuse", "√52"):
         assert secret not in logs
-    assert '"outcome": "explication_envoyee"' in logs
-    assert '"stt": ' in logs or '"durations_ms"' in logs
+    assert '"outcome": "reponse_envoyee"' in logs
+    assert '"outil_resoudre_exercice": 1' in logs
     assert set(Path(tempfile.gettempdir()).glob("xamxam-*")) == before
 
 
@@ -374,50 +608,29 @@ class _Translator:
         return translated if self.keep_markers else translated.replace("⟦T1⟧", "")
 
 
-def _french_solution():
-    return make_solution(
-        explication_wo="",
-        explication_fr="Les données sont AB = 4 cm. BC est l'hypoténuse.",
-    )
-
-
 async def test_translation_mode_protects_lexicon_terms(pipeline: XamXamPipeline) -> None:
     graph = FakeGraph(media={"img-1": (JPEG, "image/jpeg")})
-    tts = RecordingTTS()
     translator = _Translator()
-    bot = build_bot(graph, ScriptedLLM([_french_solution()]), pipeline=pipeline, tts=tts)
+    solution = make_solution(
+        explication_wo="", explication_fr="Les données sont AB = 4 cm. BC est l'hypoténuse."
+    )
+    agent = ScriptedAgentModel(list(SOLVE_THEN_EXPLAIN))
+    bot = build_bot(graph, ScriptedLLM([solution]), pipeline=pipeline, agent=agent)
     bot._translator = translator
 
     await _deliver(bot, image_message())
 
-    _assert_explanation_sent(graph)
     assert "hypoténuse" not in translator.received[0] and "⟦T1⟧" in translator.received[0]
-    [spoken] = tts.texts
-    assert spoken.startswith("Données yi aa bee égale quatre centimètres")
-    assert "ipoteniws" in spoken  # terme restauré puis réécrit par le lexique
-
-
-async def test_failed_translation_sends_apology_and_logs_without_content(
-    pipeline: XamXamPipeline, caplog: pytest.LogCaptureFixture
-) -> None:
-    graph = FakeGraph(media={"img-1": (JPEG, "image/jpeg")})
-    bot = build_bot(graph, ScriptedLLM([_french_solution()]), pipeline=pipeline)
-    bot._translator = _Translator(keep_markers=False)
-
-    with caplog.at_level(logging.INFO):
-        await _deliver(bot, image_message())
-
-    assert graph.texts == [MESSAGES.ack, MESSAGES.apology]
-    assert "Traduction échouée : Marqueurs de termes incorrects : 1 manquant(s)" in caplog.text
-    assert '"outcome": "traduction_echouee"' in caplog.text
-    assert "Les données" not in caplog.text and "Données yi" not in caplog.text
+    explanation = tool_results(agent, 1)[0]["explication_wo"]
+    assert explanation.startswith("Données yi AB = 4 cm") and "hypoténuse" in explanation
 
 
 async def test_bot_never_writes_a_transcription_to_disk(
     pipeline: XamXamPipeline, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Garde-fou de confidentialité : le bot assemblé par la vraie fabrique (celle de la
-    production) ne doit écrire aucune transcription sur disque, ni en cache ni ailleurs."""
+    production) ne doit écrire aucune transcription sur disque, ni en cache, ni dans la
+    mémoire de conversation (gardée en mémoire vive), ni ailleurs."""
     import builtins
     import os
 
@@ -478,11 +691,17 @@ async def test_bot_never_writes_a_transcription_to_disk(
     stt = FakeSTT(transcript)
     monkeypatch.setattr(factory, "create_providers", lambda *a, **k: (MockTTSProvider(), stt))
     monkeypatch.setattr(factory, "create_llm", lambda *a, **k: ScriptedLLM([make_solution()]))
+    agent = ScriptedAgentModel([*SOLVE_THEN_EXPLAIN, call(SEND_AUDIO, texte_wolof=SPOKEN)])
+    monkeypatch.setattr(factory, "GeminiAgentModel", lambda **k: agent)
     settings = Settings(
         whatsapp_token="t",
         whatsapp_phone_number_id="1",
         whatsapp_verify_token="v",
         whatsapp_app_secret="s",
+        gemini_api_key="g",
+        kvicc_tts_url="https://kiriku.test/tts",
+        kvicc_stt_url="https://kiriku.test/stt",
+        kvicc_api_key="k",
         cache_dir=tmp_path / "cache",
     )
     bot = factory.build_bot(settings, pipeline, BotSettings(grouping_window_seconds=0))
@@ -493,10 +712,28 @@ async def test_bot_never_writes_a_transcription_to_disk(
 
     await _deliver(bot, image_message(), audio_message())
 
-    _assert_explanation_sent(graph)
+    assert "audio" in graph.kinds
+    assert transcript in json.dumps(agent.received[0], ensure_ascii=False)  # vu par l'agent
     assert len(stt.received) == 2  # la note de 65 s a bien été transcrite (2 morceaux)
     assert written == [], f"transcription écrite sur disque : {written}"
     for path in (tmp_path / "cache").rglob("*"):
         assert not path.is_file() or secret not in path.read_bytes(), path
     assert not (tmp_path / "cache" / "stt").exists()
     assert any((tmp_path / "cache" / "tts").rglob("*.wav"))  # le cache TTS reste actif
+
+
+async def test_final_comment_is_not_doubled_and_markers_are_removed(
+    pipeline: XamXamPipeline,
+) -> None:
+    graph = FakeGraph()
+    agent = ScriptedAgentModel(
+        [
+            call(SEND_TEXT, texte="[note vocale envoyée] Tontu bi : 5 cm"),
+            say("Message envoyé ! À toi de jouer."),
+        ]
+    )
+    bot = build_bot(graph, ScriptedLLM([]), pipeline=pipeline, agent=agent)
+
+    await _deliver(bot, text_message("BC ?"))
+
+    assert graph.texts == ["Tontu bi : 5 cm"]

@@ -2,16 +2,12 @@
 
 from __future__ import annotations
 
-import json
 import re
 
 from pydantic import ValidationError
 
 from xamxam.llm.base import LLMError
 from xamxam.llm.schema import MathSolution
-
-TOOL_NAME = "solution_exercice"
-TOOL_DESCRIPTION = "Enregistre la solution structurée de l'exercice."
 
 _FENCE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL | re.IGNORECASE)
 
@@ -39,19 +35,6 @@ def extract_json_text(text: str) -> str:
 def parse_solution_text(text: str) -> MathSolution:
     try:
         return MathSolution.model_validate_json(extract_json_text(text))
-    except ValidationError as exc:
-        raise InvalidStructuredOutputError(_describe(exc)) from exc
-
-
-def parse_solution_object(data: object) -> MathSolution:
-    """Valide un objet déjà décodé (entrée d'un appel d'outil)."""
-    if isinstance(data, str):
-        try:
-            data = json.loads(data)
-        except ValueError as exc:
-            raise InvalidStructuredOutputError("JSON illisible") from exc
-    try:
-        return MathSolution.model_validate(data)
     except ValidationError as exc:
         raise InvalidStructuredOutputError(_describe(exc)) from exc
 

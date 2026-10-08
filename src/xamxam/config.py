@@ -1,7 +1,8 @@
-"""Configuration lue depuis les variables d'environnement.
+"""Configuration lue depuis les variables d'environnement (fichier .env chargé par le shell).
 
-Aucune variable n'est obligatoire : sans clé, Xam-Xam utilise le provider mock,
-la génération vidéo est désactivée et le bot WhatsApp répond 503.
+Le bot WhatsApp a besoin de Meta (WhatsApp Cloud) et de GEMINI_API_KEY ; sans eux, il répond
+503. Kiriku (voix) et TimaLens (vidéo) sont optionnels : sans clé, le bot répond en texte
+et n'envoie pas de vidéo. Les commandes d'évaluation fonctionnent sans clé (provider mock).
 """
 
 from __future__ import annotations
@@ -17,10 +18,16 @@ DEFAULT_LEXICON_PATH = Path("data/lexicon/xam_xam_lexique_v0.json")
 DEFAULT_SENTENCES_PATH = Path("data/eval/phrases_pythagore_thales.csv")
 DEFAULT_OUTPUT_DIR = Path("outputs")
 # Hors de outputs/ pour survivre au nettoyage des résultats d'évaluation.
-# En production, XAMXAM_CACHE_DIR pointe vers un bucket Cloud Storage monté.
 DEFAULT_CACHE_DIR = Path(".cache")
 DEFAULT_TTS_CACHE_DIR = DEFAULT_CACHE_DIR / "tts"
 DEFAULT_GRAPH_API_VERSION = "v23.0"
+# Gemini 3.5 Flash : lit les photos, appelle des outils, disponible en gratuit, et le
+# meilleur wolof de nos essais du 8 octobre 2026.
+DEFAULT_GEMINI_MODEL = "gemini-3.5-flash"
+# Repli quand le modèle principal est saturé (erreurs 429/5xx répétées, délai dépassé).
+DEFAULT_GEMINI_FALLBACK_MODEL = "gemini-3.6-flash"
+# Voix wolof de TimaLens (liste : GET https://api.timalens.com/api/v1/generation/options).
+DEFAULT_TIMALENS_VOICE = "soynade_wo_female"
 
 
 def _read(env: Mapping[str, str], name: str) -> str | None:
@@ -31,6 +38,15 @@ def _read(env: Mapping[str, str], name: str) -> str | None:
 
 def _flag(raw: str | None) -> bool:
     return (raw or "").lower() in {"1", "true", "yes", "oui", "on"}
+
+
+def _number(raw: str | None) -> float | None:
+    if raw is None:
+        return None
+    try:
+        return float(raw.replace(",", "."))
+    except ValueError as exc:
+        raise ValueError(f"Nombre invalide : « {raw} ».") from exc
 
 
 def normalize_phone_number(number: str) -> str:
@@ -60,13 +76,12 @@ class Settings:
     whatsapp_verify_token: str | None = field(default=None, repr=False)
     whatsapp_app_secret: str | None = field(default=None, repr=False)
     whatsapp_graph_api_version: str = DEFAULT_GRAPH_API_VERSION
-    # Modèle de langage : « bedrock » (déploiement principal) ou « selfhosted » (vLLM, Ollama).
-    llm_provider: str | None = None
-    bedrock_model_id: str | None = None
-    bedrock_region: str | None = None
-    selfhosted_base_url: str | None = None
-    selfhosted_model: str | None = None
-    selfhosted_api_key: str | None = field(default=None, repr=False)
+    gemini_api_key: str | None = field(default=None, repr=False)
+    gemini_model: str = DEFAULT_GEMINI_MODEL
+    gemini_fallback_model: str = DEFAULT_GEMINI_FALLBACK_MODEL
+    timalens_voice: str = DEFAULT_TIMALENS_VOICE
+    # Plafond de crédits TimaLens par vidéo : au-delà, le rendu payant n'est pas confirmé.
+    timalens_max_credits: float | None = None
     # Le modèle explique en français simple, puis un traducteur produit le wolof.
     translate_from_french: bool = False
     # Route de synthèse manuelle, réservée aux tests locaux et désactivée par défaut.
@@ -92,12 +107,12 @@ class Settings:
             whatsapp_app_secret=_read(env, "WHATSAPP_APP_SECRET"),
             whatsapp_graph_api_version=_read(env, "WHATSAPP_GRAPH_API_VERSION")
             or DEFAULT_GRAPH_API_VERSION,
-            llm_provider=(_read(env, "LLM_PROVIDER") or "").lower() or None,
-            bedrock_model_id=_read(env, "BEDROCK_MODEL_ID"),
-            bedrock_region=_read(env, "BEDROCK_REGION"),
-            selfhosted_base_url=_read(env, "SELFHOSTED_BASE_URL"),
-            selfhosted_model=_read(env, "SELFHOSTED_MODEL"),
-            selfhosted_api_key=_read(env, "SELFHOSTED_API_KEY"),
+            gemini_api_key=_read(env, "GEMINI_API_KEY"),
+            gemini_model=_read(env, "GEMINI_MODEL") or DEFAULT_GEMINI_MODEL,
+            gemini_fallback_model=_read(env, "GEMINI_FALLBACK_MODEL")
+            or DEFAULT_GEMINI_FALLBACK_MODEL,
+            timalens_voice=_read(env, "TIMALENS_VOICE") or DEFAULT_TIMALENS_VOICE,
+            timalens_max_credits=_number(_read(env, "TIMALENS_MAX_CREDITS")),
             translate_from_french=_flag(_read(env, "TRANSLATE_FROM_FRENCH")),
             enable_dev_routes=_flag(_read(env, "XAMXAM_ENABLE_DEV_ROUTES")),
             log_hash_key=_read(env, "LOG_HASH_KEY"),
@@ -115,13 +130,8 @@ class Settings:
         return bool(self.kvicc_stt_url and self.kvicc_api_key)
 
     @property
-    def llm_model(self) -> str | None:
-        """Modèle actif selon LLM_PROVIDER."""
-        if self.llm_provider == "bedrock":
-            return self.bedrock_model_id
-        if self.llm_provider == "selfhosted":
-            return self.selfhosted_model
-        return None
+    def video_enabled(self) -> bool:
+        return bool(self.timalens_api_key)
 
     def missing_bot_variables(self) -> list[str]:
         """Variables indispensables au bot WhatsApp qui ne sont pas définies (noms seulement)."""
@@ -130,19 +140,6 @@ class Settings:
             "WHATSAPP_PHONE_NUMBER_ID": self.whatsapp_phone_number_id,
             "WHATSAPP_VERIFY_TOKEN": self.whatsapp_verify_token,
             "WHATSAPP_APP_SECRET": self.whatsapp_app_secret,
-            "LLM_PROVIDER": self.llm_provider,
-            "KVICC_TTS_URL": self.kvicc_tts_url,
-            "KVICC_STT_URL": self.kvicc_stt_url,
-            "KVICC_API_KEY": self.kvicc_api_key,
+            "GEMINI_API_KEY": self.gemini_api_key,
         }
-        if self.llm_provider == "bedrock":
-            required |= {
-                "BEDROCK_MODEL_ID": self.bedrock_model_id,
-                "BEDROCK_REGION": self.bedrock_region,
-            }
-        elif self.llm_provider == "selfhosted":
-            required |= {
-                "SELFHOSTED_BASE_URL": self.selfhosted_base_url,
-                "SELFHOSTED_MODEL": self.selfhosted_model,
-            }
         return [name for name, value in required.items() if not value]
