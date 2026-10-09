@@ -87,6 +87,8 @@ Avec `TIMALENS_API_KEY`, l'agent peut transformer son explication wolof en vidé
 
 Le `Dockerfile` construit la même application : `docker build -t xamxam . && docker run --env-file .env -p 8000:8080 xamxam`.
 
+Pour la mise en ligne sur AWS (ECS Express Mode, URL HTTPS fournie, secrets dans SSM Parameter Store, sans nom de domaine) : [docs/deploiement-aws.md](docs/deploiement-aws.md).
+
 ## Se repérer
 
 | Chemin | Rôle |
@@ -99,6 +101,7 @@ Le `Dockerfile` construit la même application : `docker build -t xamxam . && do
 | [`src/xamxam/agent/`](src/xamxam/agent/) | Agent tuteur : boucle d'outils, consignes, mémoire courte. |
 | [`src/xamxam/llm/`](src/xamxam/llm/) | Appel à Gemini (photo + question), schéma JSON de la solution. |
 | [`src/xamxam/timalens/`](src/xamxam/timalens/) | Vidéo narrée de l'explication (optionnelle). |
+| [`deploy/aws/`](deploy/aws/) | Scripts de déploiement AWS : secrets SSM et service ECS Express Mode. |
 | [`data/`](data/) | Phrases et lexique source, sous CC BY-SA 4.0. |
 | [`results/benchmark-100/`](results/benchmark-100/) | Transcriptions et rapports figés ; les WAV ne sont pas dans Git. |
 
