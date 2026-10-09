@@ -113,7 +113,10 @@ else
 fi
 
 echo "Attente de la stabilisation du service (quelques minutes)…"
-aws ecs wait services-stable --region "$region" --cluster "$cluster" --services "$service"
+# Le premier déploiement (équilibreur, certificat) peut dépasser les 10 min du waiter.
+if ! aws ecs wait services-stable --region "$region" --cluster "$cluster" --services "$service"; then
+	echo "Pas encore stable : suivez l'état dans la console ECS, l'URL ci-dessous reste valable."
+fi
 endpoint="$(aws ecs describe-express-gateway-service --region "$region" --service-arn "$service_arn" \
 	--query 'service.activeConfigurations[0].ingressPaths[0].endpoint' --output text 2>/dev/null || true)"
 if [[ -z "$endpoint" || "$endpoint" == "None" ]]; then

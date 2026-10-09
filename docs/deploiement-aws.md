@@ -1,11 +1,11 @@
 # Déployer le bot WhatsApp sur AWS (ECS Express Mode)
 
 Le bot tourne sur **Amazon ECS Express Mode** : AWS exécute l'image Docker sur Fargate et
-fournit une **URL HTTPS** (`https://<service>.ecs.<région>.on.aws`). Aucun nom de domaine
+fournit une **URL HTTPS** (`https://<identifiant>.ecs.<région>.on.aws`, affichée par `deploy.sh`). Aucun nom de domaine
 ni serveur à administrer.
 
 ```
-Meta ──► https://xamxam.ecs.eu-west-3.on.aws/webhook ──► équilibreur (TLS) ──► tâche Fargate (1)
+Meta ──► https://xa-….ecs.eu-west-3.on.aws/webhook ──► équilibreur (TLS) ──► tâche Fargate (1)
                                                                    ▲
                            SSM Parameter Store /xamxam/* ──────────┘ variables d'environnement
 ```
@@ -69,8 +69,8 @@ commit. Il crée au besoin le dépôt ECR, le cluster et les rôles `xamxam-exec
 déploiement progressif), attend qu'il soit stable et affiche :
 
 ```
-Santé : https://xamxam.ecs.eu-west-3.on.aws/health
-Webhook à saisir chez Meta : https://xamxam.ecs.eu-west-3.on.aws/webhook
+Santé : https://xa-….ecs.eu-west-3.on.aws/health
+Webhook à saisir chez Meta : https://xa-….ecs.eu-west-3.on.aws/webhook
 ```
 
 Le premier déploiement prend quelques minutes (équilibreur de charge, certificat).
