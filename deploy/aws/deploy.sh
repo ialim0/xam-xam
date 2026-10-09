@@ -11,6 +11,8 @@
 set -euo pipefail
 
 region="${AWS_REGION:-eu-west-3}"
+# Toutes les commandes aws utilisent cette région, même sans région dans ~/.aws/config.
+export AWS_REGION="$region" AWS_DEFAULT_REGION="$region"
 service="${XAMXAM_SERVICE:-xamxam}"
 cluster="${XAMXAM_CLUSTER:-default}"
 prefix="${XAMXAM_SSM_PREFIX:-/xamxam/}"
