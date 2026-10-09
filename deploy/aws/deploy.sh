@@ -57,6 +57,10 @@ aws iam put-role-policy --role-name "$execution_role" --policy-name ssm-xamxam \
 	--policy-document "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"ssm:GetParameters\",\"Resource\":\"arn:aws:ssm:$region:$account:parameter${prefix%/}/*\"}]}"
 ensure_role "$infrastructure_role" ecs.amazonaws.com \
 	arn:aws:iam::aws:policy/service-role/AmazonECSInfrastructureRoleforExpressGatewayServices
+# La création de l'équilibreur lit les attributs du compte avec ce rôle ; la politique gérée
+# ne le permet pas (CreateLoadBalancer refusé, AccessDenied, sans ce droit en lecture seule).
+aws iam put-role-policy --role-name "$infrastructure_role" --policy-name elb-account-attributes \
+	--policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"ec2:DescribeAccountAttributes","Resource":"*"}]}'
 if ((new_role)); then
 	sleep 15 # propagation IAM : un rôle tout neuf n'est pas utilisable immédiatement
 fi
