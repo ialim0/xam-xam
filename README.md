@@ -1,116 +1,160 @@
 # Xam-Xam
 
-Xam-Xam prépare des explications de mathématiques en wolof pour la synthèse vocale. Il lit les expressions mathématiques en mots, puis peut remplacer les termes difficiles à prononcer par des graphies adaptées au TTS. Un prototype de bot WhatsApp utilise cette chaîne pour répondre à des exercices envoyés en photo, en texte ou par note vocale.
+**Un tuteur de mathématiques en wolof, sur WhatsApp, qui explique à voix haute.**
 
-**État du projet, 8 octobre 2026 :** prototype de recherche. Le corpus de 100 phrases et les prononciations du lexique sont encore des brouillons à faire relire par des locuteurs natifs. Les résultats publiés ci-dessous reposent sur le STT ; aucune évaluation humaine n'a encore été remplie.
+*Xam-xam* veut dire « savoir » en wolof. L'élève envoie la photo d'un exercice (Pythagore,
+Thalès), une question écrite ou une note vocale ; Xam-Xam vérifie le calcul, puis
+l'explique en notes vocales wolof, et peut aller jusqu'à une courte vidéo narrée si
+l'élève ne comprend toujours pas.
 
-## Résultats disponibles
+Le cœur du projet est un travail de recherche : **faire lire correctement des
+mathématiques à une voix de synthèse wolof**, qui à l'origine ignorait les symboles et
+presque tous les chiffres.
 
-Nous avons testé 100 phrases de Pythagore, Thalès et situations concrètes, dans trois conditions : texte brut, normalisation mathématique, puis normalisation avec lexique **brouillon**. Chaque condition a été synthétisée et retranscrite, soit 300 aller-retours TTS → STT.
+> **État : prototype de recherche (octobre 2026).** Les textes wolof et les prononciations
+> du lexique attendent la relecture de locuteurs natifs, et aucune écoute humaine n'a encore
+> été réalisée. Les résultats ci-dessous viennent d'un juge automatique (reconnaissance
+> vocale). Contributions bienvenues, voir [CONTRIBUTING.md](CONTRIBUTING.md).
 
-| Mesure STT | Brut | Normalisé | Normalisé + lexique brouillon |
-| --- | ---: | ---: | ---: |
-| Termes cibles non retrouvés, sur 236 occurrences | 77,5 % | 75,0 % | 78,8 % |
-| WER moyen par phrase | 66,8 % | 63,2 % | 70,6 % |
-| Éléments mathématiques retrouvés, sur 336 attendus | — | 216 | 180 |
+## Le résultat principal
 
-La normalisation améliore légèrement ces indicateurs ; les propositions actuelles du lexique les dégradent dans ce run. **Ces chiffres ne démontrent pas une amélioration de la prononciation audible** : le STT peut mal transcrire une voix compréhensible, et les textes wolof n'ont pas été validés. Voir les [résultats et limites](docs/resultats-100.md), les [CSV publiés](results/benchmark-100/) et le [protocole](docs/benchmark.md).
+Sur 100 phrases de mathématiques, synthétisées par la voix wolof Kiriku puis réécoutées par
+la reconnaissance vocale Kiriku :
 
-## Fonctionnement
+| Ce qui « passe » dans l'audio | Texte brut | Après normalisation Xam-Xam |
+| --- | ---: | ---: |
+| Nombres de l'énoncé | 23,5 % | **81,4 %** |
+| Éléments de formule (points, ², =, +, √) | 9,5 % | **64,3 %** |
+
+Un exemple (phrase P008) :
+
+| | Texte |
+| --- | --- |
+| Énoncé | BC² = 12² + 16² = 144 + 256 = 400 … √400 = 20 cm |
+| Entendu, texte brut | *date 102 ci statakta nuwa saktit da dafa …* |
+| Envoyé après normalisation | bee see au carré égale douze au carré plus seize au carré … |
+| Entendu, après normalisation | *dc au carré égal 12 au carré plus 16 au carré égal 144 plus 256 egal 400 …* |
+
+Un lexique de prononciations **non validé** a, lui, dégradé les résultats : nous le
+publions comme résultat négatif, et le produit n'applique que des prononciations validées.
+
+➡️ **[Lire la note de recherche](docs/recherche-prononciation.md)** : cause du problème,
+solutions, exemples commentés, correction d'un biais de mesure et limites.
+
+## Comment ça marche
 
 ```text
-texte ou exercice → lecture des formules → lexique validé → TTS → audio
-                                              │
-                              évaluation : audio → STT → métriques + écoute humaine
+Élève (WhatsApp)
+   │  photo, texte ou note vocale
+   ▼
+Agent tuteur ── Gemini (ou Rodium) : lit la photo, choisit ses outils
+   │   ├─ résolution vérifiée par SymPy (aucun résultat chiffré non vérifié)
+   │   ├─ note vocale : normalisation → lexique validé → TTS Kiriku → [réécoute STT]
+   │   └─ vidéo narrée TimaLens, si l'élève ne comprend toujours pas
+   ▼
+Notes vocales wolof (texte en secours)
 ```
 
-En production, seules les entrées du lexique au statut `valide` sont appliquées. Le benchmark publié a activé explicitement le statut `brouillon` pour tester les propositions existantes. Le bot est un agent tuteur conversationnel (Gemini) : il discute, lit la photo de l'exercice, vérifie les calculs Pythagore/Thalès avec SymPy, puis guide l'élève en wolof, du texte vers la note vocale (Kiriku) et jusqu'à une vidéo narrée (TimaLens) s'il ne comprend toujours pas. L'autocontrôle audio peut retranscrire une formule générée et essayer une variante lorsque ses éléments ne sont pas reconnus ; il ne valide pas la qualité linguistique.
+- **Pédagogie.** Explication courte puis « Dégg nga ? » (tu as compris ?). En cas de
+  difficulté, l'agent reformule avec un exemple concret, puis propose une vidéo.
+- **Garde-fous en code.** Résultat chiffré seulement via l'outil vérifié ; au plus 6 étapes
+  par message ; limites par élève (messages par heure, vidéos par jour).
+- **Vie privée.** Conversation gardée 1 h en mémoire vive uniquement ; ni photo ni audio
+  d'élève conservé ; numéros hachés dans les journaux.
 
-## Essayer localement
+## Essayer en 2 minutes, sans aucune clé
 
-Python 3.11 ou plus récent est nécessaire, ainsi que `ffmpeg` pour les notes vocales.
+Python 3.11+ et `ffmpeg`.
 
 ```bash
 git clone https://github.com/ialim0/xam-xam.git
 cd xam-xam
-python3 -m venv .venv
-source .venv/bin/activate
+python3 -m venv .venv && source .venv/bin/activate
 pip install -e '.[dev]'
-pytest -q
-python -m xamxam.eval check
+pytest -q                                                   # 330+ tests, aucun appel réseau
 python -m xamxam.eval report --output-dir results/benchmark-100
+python tools/analyse_complementaire.py results/benchmark-100
 ```
 
-La dernière commande recalcule les tableaux publiés **sans clé API** à partir des transcriptions figées. Pour refaire un benchmark audio, suivez [docs/benchmark.md](docs/benchmark.md) et choisissez explicitement `--provider kvicc`. Sans configuration Kiriku, le fournisseur `auto` utilise un mock ; ses résultats ne sont pas des mesures de prononciation.
+Les deux dernières commandes recalculent les résultats publiés à partir des transcriptions
+figées.
 
-## Démarrer le bot WhatsApp sur sa machine
+## Lancer le bot WhatsApp
 
-Il faut une **clé RodiumAI** et une **application Meta** avec le produit WhatsApp ([démarrage WhatsApp Cloud API](https://developers.facebook.com/docs/whatsapp/cloud-api/get-started)), qui fournit un numéro de test. Gemini direct reste accepté pour les anciens déploiements.
-
-| Service | Variables | Sans lui |
+| Service | Variables | Obligatoire ? |
 | --- | --- | --- |
-| Meta WhatsApp Cloud | `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET` | le bot ne démarre pas (503) |
-| RodiumAI | `RODIUM_API_KEY` | le bot ne démarre pas (503) |
-| Kiriku (KVICC) | `KVICC_TTS_URL`, `KVICC_STT_URL`, `KVICC_API_KEY` | réponses en texte ; notes vocales non écoutées |
-| TimaLens | `TIMALENS_API_KEY` | pas de vidéo |
+| Meta WhatsApp Cloud API | `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET` | oui |
+| Modèle de langage | `GEMINI_API_KEY` ([clé gratuite](https://aistudio.google.com/apikey)), ou `LLM_PROVIDER=rodium` + `RODIUM_API_KEY` | oui (l'un ou l'autre) |
+| Voix wolof Kiriku | `KVICC_TTS_URL`, `KVICC_STT_URL`, `KVICC_API_KEY` | non : sans elle, réponses en texte |
+| Vidéo TimaLens | `TIMALENS_API_KEY` | non : sans elle, pas de vidéo |
 
-1. **Configurer.** Copiez `.env.example` en `.env` et remplissez au moins les variables Meta et `RODIUM_API_KEY`. Le modèle par défaut est `google/gemini-3.8-flash`, avec `google/gemini-3.7-flash` en repli. Dans la console Meta : le jeton d'accès (`WHATSAPP_TOKEN`), l'identifiant du numéro (`WHATSAPP_PHONE_NUMBER_ID`) et la clé secrète de l'application (`WHATSAPP_APP_SECRET`, dans *Paramètres de l'application › Général*). `WHATSAPP_VERIFY_TOKEN` est une chaîne de votre choix.
-
-2. **Lancer le serveur.**
-
+1. **Configurer** : `cp .env.example .env`, puis remplir au moins Meta et la clé du modèle.
+   Côté Meta, créez une application avec le produit WhatsApp
+   ([guide officiel](https://developers.facebook.com/docs/whatsapp/cloud-api/get-started)) ;
+   elle fournit un numéro de test.
+2. **Lancer** :
    ```bash
    set -a; source .env; set +a
    uvicorn --factory xamxam.whatsapp.app:create_app --port 8000
+   curl localhost:8000/health        # bot_ready: true, missing_variables: []
    ```
+3. **Exposer** le webhook en HTTPS, par exemple `cloudflared tunnel --url http://localhost:8000`.
+4. **Brancher Meta** : *WhatsApp › Configuration* : URL `https://<tunnel>/webhook`, jeton
+   `WHATSAPP_VERIFY_TOKEN`, abonnement au champ `messages`.
+5. **Tester** : écrivez « salut » au numéro, puis envoyez la photo d'un exercice.
 
-   Vérifiez avec `curl localhost:8000/health` : `bot_ready` doit valoir `true`, `missing_variables` doit être vide ; `voice` et `video` indiquent si Kiriku et TimaLens sont actifs.
+Toutes les options (mode texte, limites, langue des nombres, réécoute STT…) sont
+commentées dans [`.env.example`](.env.example). Image Docker :
+`docker build -t xamxam . && docker run --env-file .env -p 8000:8080 xamxam`.
+Mise en ligne sur AWS sans nom de domaine : [docs/deploiement-aws.md](docs/deploiement-aws.md).
 
-3. **Exposer le webhook.** Meta exige une URL publique en HTTPS. Ouvrez un tunnel dans un second terminal, par exemple `cloudflared tunnel --url http://localhost:8000` ou `ngrok http 8000`, et notez l'adresse obtenue.
+## Documentation
 
-4. **Brancher Meta.** Dans *WhatsApp › Configuration*, indiquez `https://<adresse-du-tunnel>/webhook` comme URL de rappel et votre `WHATSAPP_VERIFY_TOKEN` comme jeton de vérification, puis abonnez-vous au champ `messages`. Ajoutez votre propre numéro parmi les destinataires autorisés du numéro de test.
+| Document | Contenu |
+| --- | --- |
+| [Note de recherche](docs/recherche-prononciation.md) | Démarche, solutions, exemples, résultats et limites. |
+| [Résultats du benchmark](docs/resultats-100.md) | Tous les chiffres du run de 100 phrases. |
+| [Protocole](docs/benchmark.md) | Refaire un run, écoute humaine à l'aveugle. |
+| [Modèles de langage](docs/modeles.md) | Gemini ou Rodium, choix du modèle, confidentialité. |
+| [Déploiement AWS](docs/deploiement-aws.md) | ECS Express Mode, secrets dans SSM. |
+| [Contribuer](CONTRIBUTING.md) | Prononciations, phrases, code, recherche. |
 
-5. **Tester.** Écrivez `salut` au numéro de test, puis envoyez la photo d'un exercice de Pythagore ou de Thalès. Le bot affiche « en train d'écrire », répond en quelques secondes au texte, et attend 8 s après une photo ou une note vocale pour les regrouper.
-
-### Comment l'agent répond
-
-Dès qu'un message arrive, l'élève reçoit l'autocollant animé « Néggal tuuti » (patiente un peu) pendant le traitement, suivi, quel que soit le mode, d'une note vocale « Néggal tuuti, maa ngi koy xool » générée une seule fois puis réutilisée (cache TTS sur disque, média gardé chez Meta ; texte modifiable via la clé `waiting_audio` de `XAMXAM_MESSAGES_PATH`). `XAMXAM_WAITING_STICKER=false` retire les deux. Par défaut, l'élève ne reçoit **que des notes vocales en wolof** : salutations, explications, accusés de réception et messages d'erreur. Le texte ne sert qu'en secours, si la synthèse Kiriku échoue. Sans Kiriku, ou avec `XAMXAM_REPLY_MODE=texte`, le bot répond par écrit et propose des boutons (« 🔊 Écouter », « 🎬 Vidéo », « ✅ Compris »).
-
-À chaque message, l'agent choisit lui-même ses outils : résoudre l'exercice (lecture de la photo, vérification SymPy), envoyer une note vocale, lancer une vidéo, et en mode texte écrire ou proposer des boutons.
-
-- Une salutation ou une question de cours reçoit une réponse courte.
-- Un exercice reçoit une explication (données, étapes, réponse vérifiée), puis « Dégg nga ? ».
-- Si l'élève ne comprend pas (« dégguma »), l'agent reformule autrement, avec un exemple concret ; s'il ne comprend toujours pas, il le prévient et lance seul la vidéo.
-
-Garde-fous en code : un résultat chiffré ne peut venir que de l'outil de résolution vérifié ; au plus 6 étapes par message ; une vidéo à la fois et 5 par jour par élève (`XAMXAM_VIDEOS_PER_DAY`). La conversation est gardée **1 h en mémoire vive** (`XAMXAM_MEMORY_MINUTES`) : rien n'est écrit sur disque, et ni les photos ni les audios des élèves ne sont conservés.
-
-Avec `TIMALENS_API_KEY`, l'agent peut transformer son explication wolof en vidéo tableau blanc au format vertical. Si Kiriku est configuré, la note vocale envoyée à l'élève est transmise à TimaLens et sert de narration : on entend la même voix, et les scènes suivent ses mots. Sans Kiriku, une voix wolof de TimaLens lit le texte. Seul l'audio généré par Xam-Xam est envoyé, jamais la note vocale de l'élève. L'aperçu est gratuit ; le rendu consomme des crédits TimaLens, que `TIMALENS_MAX_CREDITS` permet de plafonner par vidéo. La vidéo arrive quelques minutes après l'explication, sous forme de vidéo WhatsApp, ou de lien si elle dépasse la taille acceptée. Le projet TimaLens (explication, énoncé et réponse) reste dans votre compte TimaLens ; la photo de l'élève ne lui est pas envoyée.
-
-Le `Dockerfile` construit la même application : `docker build -t xamxam . && docker run --env-file .env -p 8000:8080 xamxam`.
-
-Pour la mise en ligne sur AWS (ECS Express Mode, URL HTTPS fournie, secrets dans SSM Parameter Store, sans nom de domaine) : [docs/deploiement-aws.md](docs/deploiement-aws.md).
-
-## Se repérer
+## Organisation du code
 
 | Chemin | Rôle |
 | --- | --- |
 | [`src/xamxam/normalize/`](src/xamxam/normalize/) | Lecture des nombres, unités, formules et noms de points. |
-| [`src/xamxam/lexicon/`](src/xamxam/lexicon/) et [`pronounce/`](src/xamxam/pronounce/) | Validation et application du lexique. |
-| [`src/xamxam/providers/`](src/xamxam/providers/) | Interfaces TTS/STT, Kiriku, mock et cache. |
-| [`src/xamxam/eval/`](src/xamxam/eval/) | Génération des audios, alignement, métriques et rapports. |
-| [`src/xamxam/whatsapp/`](src/xamxam/whatsapp/) | Webhook et orchestration du bot. |
-| [`src/xamxam/agent/`](src/xamxam/agent/) | Agent tuteur : boucle d'outils, consignes, mémoire courte. |
-| [`src/xamxam/llm/`](src/xamxam/llm/) | Appel à Gemini (photo + question), schéma JSON de la solution. |
-| [`src/xamxam/timalens/`](src/xamxam/timalens/) | Vidéo narrée de l'explication (optionnelle). |
-| [`deploy/aws/`](deploy/aws/) | Scripts de déploiement AWS : secrets SSM et service ECS Express Mode. |
-| [`data/`](data/) | Phrases et lexique source, sous CC BY-SA 4.0. |
-| [`results/benchmark-100/`](results/benchmark-100/) | Transcriptions et rapports figés ; les WAV ne sont pas dans Git. |
+| [`src/xamxam/lexicon/`](src/xamxam/lexicon/), [`pronounce/`](src/xamxam/pronounce/) | Lexique de prononciations, validation, application. |
+| [`src/xamxam/tts_alphabet.py`](src/xamxam/tts_alphabet.py) | Caractères réellement lus par les voix Kiriku. |
+| [`src/xamxam/audio_feedback.py`](src/xamxam/audio_feedback.py) | Réécoute STT des formules et variantes ciblées. |
+| [`src/xamxam/providers/`](src/xamxam/providers/) | TTS/STT Kiriku, mock, cache, découpage des longs textes. |
+| [`src/xamxam/eval/`](src/xamxam/eval/) | Benchmark : génération, alignement, métriques, rapports, écoute à l'aveugle. |
+| [`src/xamxam/agent/`](src/xamxam/agent/), [`llm/`](src/xamxam/llm/) | Agent tuteur, Gemini et Rodium, schéma de solution. |
+| [`src/xamxam/verify/`](src/xamxam/verify/) | Vérification SymPy (Pythagore, Thalès). |
+| [`src/xamxam/whatsapp/`](src/xamxam/whatsapp/), [`timalens/`](src/xamxam/timalens/) | Webhook WhatsApp, orchestration, vidéo. |
+| [`data/`](data/), [`results/`](results/) | Corpus, lexique et résultats publiés (CC BY-SA 4.0). |
 
-Le [guide de contribution](CONTRIBUTING.md) décrit la validation des prononciations et des phrases. Le choix et l'évaluation du modèle sont décrits dans [docs/modeles.md](docs/modeles.md). La configuration est documentée dans [`.env.example`](.env.example) ; ne publiez jamais votre fichier `.env`.
+## Remerciements
+
+La synthèse et la reconnaissance vocales wolof viennent des modèles **Kiriku**, mis à
+disposition par les organisateurs du KVICC. Vidéos : **TimaLens**. Modèles de langage :
+**Google Gemini**, ou via **RodiumAI**.
 
 ## Licences
 
-Code : [MIT](LICENSE). Corpus, lexique et résultats textuels : [CC BY-SA 4.0](data/LICENSE). Les API Kiriku, Meta, Gemini et TimaLens ont leurs propres conditions ; aucun audio généré par ces services n'est distribué ici.
+Code : [MIT](LICENSE). Corpus, lexique et résultats textuels :
+[CC BY-SA 4.0](data/LICENSE). Les API utilisées ont leurs propres conditions ; aucun audio
+généré par ces services n'est distribué ici.
 
 ## English summary
 
-Xam-Xam is a Wolof math speech preprocessing prototype with a WhatsApp bot. The bot is a conversational tutor agent built on Gemini function calling: it chats, reads exercise photos, checks Pythagoras/Thales results with SymPy, and escalates from text to Wolof voice notes (Kiriku) to a narrated TimaLens video when the student is stuck. It runs locally with a free Gemini key, a Meta test number and an HTTPS tunnel. Its public 100-sentence benchmark compares raw text, math normalization and a **draft** pronunciation lexicon using TTS → STT. The draft lexicon did not improve the reported STT metrics, and no human listening scores are available yet. See the [results](docs/resultats-100.md) and [reproduction protocol](docs/benchmark.md).
+Xam-Xam is a WhatsApp math tutor that explains exercises in Wolof voice notes. Its core is
+research on making a Wolof TTS voice (Kiriku) read mathematics: the voice silently drops
+symbols and most digits, so Xam-Xam rewrites formulas, numbers, units and point names into
+words before synthesis. On a 100-sentence benchmark judged by Wolof speech recognition, the
+share of numbers recovered from the audio rises from 23.5 % to 81.4 %, and formula elements
+from 9.5 % to 64.3 %. A draft (unvalidated) pronunciation lexicon made things worse, so only
+native-speaker-validated pronunciations are used. Results are machine-judged on a synthetic
+corpus; human listening is the next step. The bot runs with a free Gemini key (or optionally
+RodiumAI), verifies calculations with SymPy, and keeps no student media. See the
+[research note](docs/recherche-prononciation.md) (in French).

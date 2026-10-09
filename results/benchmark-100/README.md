@@ -12,6 +12,7 @@ Capture locale du 8 octobre 2026. Voir [l'analyse](../../docs/resultats-100.md) 
 | [`rapport/formules_stt.csv`](rapport/formules_stt.csv) | Éléments de formule attendus et repérés. |
 | [`rapport/diagnostic_phrases.csv`](rapport/diagnostic_phrases.csv) | 100 phrases classées pour l'écoute. |
 | [`SHA256SUMS`](SHA256SUMS) | Empreintes des entrées et de cet instantané. |
+| [`analyse_complementaire/`](analyse_complementaire/) | Nombres et éléments de formule retrouvés, avec la phrase d'origine comme référence commune (ajouté après l'instantané, hors `SHA256SUMS`). |
 
 Les chemins `audio/*.wav` dans les CSV désignent des audios **non inclus dans le dépôt**. Aucune évaluation humaine n'est publiée, car aucune n'a été réalisée. Les textes wolof et les prononciations évaluées sont au statut brouillon. Les transcriptions ont été obtenues avec les services Kiriku du challenge ; leur version exacte n'a pas été consignée. Le code du rapport correspondant est au commit `b4d35c9` ; le commit exact et les paramètres internes de génération des WAV ne sont pas consignés. Il n'est donc pas possible de reproduire le signal audio à l'identique à partir de cet instantané.
 
@@ -21,5 +22,7 @@ Depuis la racine du dépôt, les rapports peuvent être recalculés **sans API**
 python -m xamxam.eval report --output-dir results/benchmark-100
 sha256sum -c results/benchmark-100/SHA256SUMS
 ```
+
+`python tools/analyse_complementaire.py results/benchmark-100` recalcule `analyse_complementaire/`.
 
 La commande `report` recalcule les quatre fichiers de `rapport/` à partir des CSV `stt/` et de `run_info.json`. Le corpus et le lexique d'entrée sont dans [`data/`](../../data/) ; leurs empreintes figurent aussi dans `SHA256SUMS`. Pour refaire les appels TTS/STT, utilisez un autre dossier de sortie afin de conserver cet instantané.

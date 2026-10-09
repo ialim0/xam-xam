@@ -30,6 +30,25 @@ Le troisième bras est **expérimental**. Il ne correspond pas au réglage par d
 
 Le **WER** est la distance d'édition mot à mot entre le texte envoyé au TTS et la transcription STT, divisée par le nombre de mots du texte envoyé, puis moyennée sur les phrases. Il dépend de l'orthographe choisie et des erreurs du STT. Les **éléments de formule** sont les noms de points de deux ou trois lettres, carrés, signes égal, additions et racines attendus dans la source ; le contrôle accepte plusieurs graphies d'un point et l'exposant `²` transcrit par le STT. Les lettres seules sont exclues du contrôle, car trop ambiguës.
 
+### Avec une référence commune aux trois conditions
+
+Le WER ci-dessus compare chaque transcription au texte envoyé **dans sa condition** : la
+référence change d'une condition à l'autre, et « douze » transcrit « 12 » compte comme une
+erreur. Ce biais pénalise la normalisation. L'[analyse complémentaire](../results/benchmark-100/analyse_complementaire/resume.md)
+compare les trois conditions à la même référence, la phrase d'origine
+([`tools/analyse_complementaire.py`](../tools/analyse_complementaire.py), sans API) :
+
+| Indicateur | Brut | Normalisé | Lexique brouillon |
+| --- | ---: | ---: | ---: |
+| Nombres de l'énoncé retrouvés | 62/264 (23,5 %) | 215/264 (81,4 %) | 214/264 (81,1 %) |
+| Phrases dont tous les nombres sont retrouvés | 1/61 | 32/61 | 35/61 |
+| Éléments de formule retrouvés | 32/336 (9,5 %) | 216/336 (64,3 %) | 180/336 (53,6 %) |
+
+En comparaison appariée, la normalisation améliore le compte de nombres de 52 phrases sur
+61, en dégrade 4 (test de signe, p < 10⁻¹⁰). Le lexique brouillon dégrade les éléments de
+formule de 30 phrases et en améliore 11 (p ≈ 0,004). La démarche et des exemples commentés
+sont dans la [note de recherche](recherche-prononciation.md).
+
 ## Où se concentrent les alertes
 
 Dans la condition normalisée, les termes les plus souvent absents sous une graphie acceptée sont :
@@ -59,7 +78,7 @@ Le cas `P002` montre la prudence nécessaire : le STT restitue `BC au carré`, `
 
 ## Interprétation et limites
 
-La normalisation fait passer le taux de termes non retrouvés de 77,5 % à 75,0 % et le WER moyen de 66,8 % à 63,2 %. Le lexique brouillon fait ensuite monter ces taux à 78,8 % et 70,6 %. **Nous ne revendiquons pas de gain de prononciation apporté par le lexique dans son état actuel.** Les 32 termes effectivement réécrits dans le run ne sont pas validés ; 30 d'entre eux sont des cibles du benchmark.
+La normalisation fait passer le taux de termes non retrouvés de 77,5 % à 75,0 % et le WER moyen de 66,8 % à 63,2 % ; avec une référence commune, son effet est bien plus net : les nombres retrouvés passent de 23,5 % à 81,4 % et les éléments de formule de 9,5 % à 64,3 %. Le lexique brouillon fait ensuite monter ces taux à 78,8 % et 70,6 %. **Nous ne revendiquons pas de gain de prononciation apporté par le lexique dans son état actuel.** Les 32 termes effectivement réécrits dans le run ne sont pas validés ; 30 d'entre eux sont des cibles du benchmark.
 
 Les 100 phrases sont synthétiques et portent sur deux notions mathématiques. Le wolof, les noms de lettres et les prononciations n'ont pas été relus exhaustivement par des locuteurs natifs. Un seul moteur STT a servi de juge automatique, et il peut partager des biais avec le TTS. Le WER et les recherches exactes de termes confondent parfois variation d'écriture et incompréhension. Sans écoute humaine à l'aveugle, ces résultats ne mesurent ni la compréhension d'un élève ni l'efficacité pédagogique. Le bot complet, l'extraction de photos et les modèles de langage ne sont pas évalués par ce benchmark.
 

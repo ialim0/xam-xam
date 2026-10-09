@@ -70,7 +70,7 @@ python -m xamxam.eval report --output-dir outputs/nouveau-run
 
 ## Lire les mesures
 
-- `stt/transcriptions.csv` : texte effectivement envoyé, transcription, WER et chemin audio. Le WER compare le texte envoyé au TTS et le STT, après tokenisation ; il reflète aussi les variantes orthographiques et les erreurs du STT.
+- `stt/transcriptions.csv` : texte effectivement envoyé, transcription, WER et chemin audio. Le WER compare le texte envoyé au TTS et le STT, après tokenisation ; il reflète aussi les variantes orthographiques et les erreurs du STT. Sa référence change d'une condition à l'autre et un nombre dit en lettres mais transcrit en chiffres compte comme une erreur : pour comparer les conditions, préférez `python tools/analyse_complementaire.py <dossier>` (nombres et éléments de formule retrouvés, référence commune).
 - `stt/termes.csv` : occurrences ciblées et occurrences absentes de la transcription sous une graphie acceptée. Ce compte n'est pas un jugement humain sur l'intelligibilité.
 - `rapport/formules_stt.csv` : points de deux ou trois lettres, carrés, égalités, additions et racines attendus puis repérés ; les lettres seules sont exclues. `BC`, `B C` et `bee see` sont regroupés, et `15²` est accepté pour « quinze au carré ».
 - `rapport/diagnostic_phrases.csv` : une ligne par phrase, avec les deux conditions transformées, les alertes, transcriptions et chemins audio. Le tri priorise les formules puis les termes manquants dans la version normalisée. Il sert à organiser l'écoute.
