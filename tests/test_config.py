@@ -27,7 +27,7 @@ def test_settings_bot_variables() -> None:
     assert settings.state_dir == Path("/state")
     assert settings.whatsapp_graph_api_version == "v23.0"
     assert "WHATSAPP_APP_SECRET" not in settings.missing_bot_variables()
-    assert "GEMINI_API_KEY" in settings.missing_bot_variables()
+    assert "RODIUM_API_KEY (ou GEMINI_API_KEY)" in settings.missing_bot_variables()
     # Kiriku (voix) et TimaLens (vidéo) sont optionnels.
     assert not {"KVICC_TTS_URL", "KVICC_API_KEY", "TIMALENS_API_KEY"} & set(
         settings.missing_bot_variables()

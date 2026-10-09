@@ -1,8 +1,9 @@
 """Configuration lue depuis les variables d'environnement (fichier .env chargé par le shell).
 
-Le bot WhatsApp a besoin de Meta (WhatsApp Cloud) et de GEMINI_API_KEY ; sans eux, il répond
-503. Kiriku (voix) et TimaLens (vidéo) sont optionnels : sans clé, le bot répond en texte
-et n'envoie pas de vidéo. Les commandes d'évaluation fonctionnent sans clé (provider mock).
+Le bot WhatsApp a besoin de Meta (WhatsApp Cloud) et de RODIUM_API_KEY (ou GEMINI_API_KEY) ;
+sans eux, il répond 503. Kiriku (voix) et TimaLens (vidéo) sont optionnels : sans clé, le bot
+répond en texte et n'envoie pas de vidéo.
+Les commandes d'évaluation fonctionnent sans clé (provider mock).
 """
 
 from __future__ import annotations
@@ -26,6 +27,9 @@ DEFAULT_GRAPH_API_VERSION = "v23.0"
 DEFAULT_GEMINI_MODEL = "gemini-3.5-flash"
 # Repli quand le modèle principal est saturé (erreurs 429/5xx répétées, délai dépassé).
 DEFAULT_GEMINI_FALLBACK_MODEL = "gemini-3.6-flash"
+# Modèle Rodium stable, avec vision, JSON mode et appels d'outils.
+DEFAULT_RODIUM_MODEL = "google/gemini-3.8-flash"
+DEFAULT_RODIUM_FALLBACK_MODEL = "google/gemini-3.7-flash"
 # Voix wolof de TimaLens (liste : GET https://api.timalens.com/api/v1/generation/options).
 DEFAULT_TIMALENS_VOICE = "soynade_wo_female"
 
@@ -79,6 +83,9 @@ class Settings:
     gemini_api_key: str | None = field(default=None, repr=False)
     gemini_model: str = DEFAULT_GEMINI_MODEL
     gemini_fallback_model: str = DEFAULT_GEMINI_FALLBACK_MODEL
+    rodium_api_key: str | None = field(default=None, repr=False)
+    rodium_model: str = DEFAULT_RODIUM_MODEL
+    rodium_fallback_model: str = DEFAULT_RODIUM_FALLBACK_MODEL
     timalens_voice: str = DEFAULT_TIMALENS_VOICE
     # Plafond de crédits TimaLens par vidéo : au-delà, le rendu payant n'est pas confirmé.
     timalens_max_credits: float | None = None
@@ -111,6 +118,10 @@ class Settings:
             gemini_model=_read(env, "GEMINI_MODEL") or DEFAULT_GEMINI_MODEL,
             gemini_fallback_model=_read(env, "GEMINI_FALLBACK_MODEL")
             or DEFAULT_GEMINI_FALLBACK_MODEL,
+            rodium_api_key=_read(env, "RODIUM_API_KEY"),
+            rodium_model=_read(env, "RODIUM_MODEL") or DEFAULT_RODIUM_MODEL,
+            rodium_fallback_model=_read(env, "RODIUM_FALLBACK_MODEL")
+            or DEFAULT_RODIUM_FALLBACK_MODEL,
             timalens_voice=_read(env, "TIMALENS_VOICE") or DEFAULT_TIMALENS_VOICE,
             timalens_max_credits=_number(_read(env, "TIMALENS_MAX_CREDITS")),
             translate_from_french=_flag(_read(env, "TRANSLATE_FROM_FRENCH")),
@@ -140,6 +151,6 @@ class Settings:
             "WHATSAPP_PHONE_NUMBER_ID": self.whatsapp_phone_number_id,
             "WHATSAPP_VERIFY_TOKEN": self.whatsapp_verify_token,
             "WHATSAPP_APP_SECRET": self.whatsapp_app_secret,
-            "GEMINI_API_KEY": self.gemini_api_key,
+            "RODIUM_API_KEY (ou GEMINI_API_KEY)": self.rodium_api_key or self.gemini_api_key,
         }
         return [name for name, value in required.items() if not value]

@@ -45,16 +45,16 @@ La dernière commande recalcule les tableaux publiés **sans clé API** à parti
 
 ## Démarrer le bot WhatsApp sur sa machine
 
-Il faut deux comptes gratuits : une **clé Gemini** ([Google AI Studio](https://aistudio.google.com/apikey)) et une **application Meta** avec le produit WhatsApp ([démarrage WhatsApp Cloud API](https://developers.facebook.com/docs/whatsapp/cloud-api/get-started)), qui fournit un numéro de test.
+Il faut une **clé RodiumAI** et une **application Meta** avec le produit WhatsApp ([démarrage WhatsApp Cloud API](https://developers.facebook.com/docs/whatsapp/cloud-api/get-started)), qui fournit un numéro de test. Gemini direct reste accepté pour les anciens déploiements.
 
 | Service | Variables | Sans lui |
 | --- | --- | --- |
 | Meta WhatsApp Cloud | `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET` | le bot ne démarre pas (503) |
-| Gemini | `GEMINI_API_KEY` | le bot ne démarre pas (503) |
+| RodiumAI | `RODIUM_API_KEY` | le bot ne démarre pas (503) |
 | Kiriku (KVICC) | `KVICC_TTS_URL`, `KVICC_STT_URL`, `KVICC_API_KEY` | réponses en texte ; notes vocales non écoutées |
 | TimaLens | `TIMALENS_API_KEY` | pas de vidéo |
 
-1. **Configurer.** Copiez `.env.example` en `.env` et remplissez au moins les variables Meta et Gemini. Dans la console Meta : le jeton d'accès (`WHATSAPP_TOKEN`), l'identifiant du numéro (`WHATSAPP_PHONE_NUMBER_ID`) et la clé secrète de l'application (`WHATSAPP_APP_SECRET`, dans *Paramètres de l'application › Général*). `WHATSAPP_VERIFY_TOKEN` est une chaîne de votre choix.
+1. **Configurer.** Copiez `.env.example` en `.env` et remplissez au moins les variables Meta et `RODIUM_API_KEY`. Le modèle par défaut est `google/gemini-3.8-flash`, avec `google/gemini-3.7-flash` en repli. Dans la console Meta : le jeton d'accès (`WHATSAPP_TOKEN`), l'identifiant du numéro (`WHATSAPP_PHONE_NUMBER_ID`) et la clé secrète de l'application (`WHATSAPP_APP_SECRET`, dans *Paramètres de l'application › Général*). `WHATSAPP_VERIFY_TOKEN` est une chaîne de votre choix.
 
 2. **Lancer le serveur.**
 

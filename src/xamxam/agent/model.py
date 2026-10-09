@@ -1,10 +1,9 @@
 """Cerveau de l'agent : un modèle qui, à chaque étape, répond ou appelle des outils.
 
 L'historique de l'agent est une liste de messages simples : `user`, `assistant` (avec ses
-`tool_calls`) et un message `tool` par résultat d'outil. GeminiAgentModel le convertit au
-format `contents` de l'API Gemini (appel de fonctions) à chaque étape. Les parties brutes
-renvoyées par Gemini sont gardées dans le message `assistant` (clé `gemini_parts`) et lui
-sont renvoyées telles quelles : Gemini 3 exige ses `thoughtSignature`.
+`tool_calls`) et un message `tool` par résultat d'outil. GeminiAgentModel convertit cet
+historique au format Gemini ; RodiumAgentModel l'envoie au format OpenAI Chat Completions.
+Les parties brutes de Gemini sont conservées car Gemini 3 exige ses `thoughtSignature`.
 """
 
 from __future__ import annotations
@@ -18,6 +17,7 @@ from typing import Any
 
 import httpx
 
+from xamxam.llm.base import LLMError
 from xamxam.llm.gemini import (
     GEMINI_BASE_URL,
     GeminiHTTP,
@@ -25,6 +25,7 @@ from xamxam.llm.gemini import (
     parts_text,
     usage_tokens,
 )
+from xamxam.llm.rodium import RODIUM_BASE_URL, RodiumHTTP
 
 # Une étape de conversation doit rester rapide ; au-delà, repli sur le modèle suivant.
 DEFAULT_TIMEOUT = 30.0
@@ -185,6 +186,101 @@ class GeminiAgentModel(AgentModel):
             text=text,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
+        )
+
+
+class RodiumAgentModel(AgentModel):
+    """Agent à outils via le format OpenAI Chat Completions de Rodium."""
+
+    name = "rodium"
+
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        model: str,
+        fallback_models: Sequence[str] = (),
+        base_url: str = RODIUM_BASE_URL,
+        transport: httpx.BaseTransport | None = None,
+        timeout: float = DEFAULT_TIMEOUT,
+        sleep: Callable[[float], None] = time.sleep,
+    ) -> None:
+        self.model = model
+        self._rodium = RodiumHTTP(
+            api_key=api_key,
+            models=[model, *fallback_models],
+            base_url=base_url,
+            transport=transport,
+            timeout=timeout,
+            sleep=sleep,
+        )
+
+    def __repr__(self) -> str:
+        return f"RodiumAgentModel(model={self.model!r})"
+
+    def next_turn(
+        self, system: str, messages: list[dict[str, Any]], tools: list[dict[str, Any]]
+    ) -> ModelTurn:
+        history = []
+        for message in messages:
+            role = message.get("role")
+            if role == "tool":
+                history.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": message.get("tool_call_id", ""),
+                        "content": message.get("content", ""),
+                    }
+                )
+            elif role == "assistant":
+                entry = {"role": "assistant", "content": message.get("content", "")}
+                if message.get("tool_calls"):
+                    entry["tool_calls"] = message["tool_calls"]
+                history.append(entry)
+            elif role == "user":
+                history.append({"role": "user", "content": message.get("content", "")})
+        data = self._rodium.post(
+            {
+                "messages": [{"role": "system", "content": system}, *history],
+                "tools": [{"type": "function", "function": declaration} for declaration in tools],
+                "tool_choice": "auto",
+                "max_tokens": 2048,
+            }
+        )
+        try:
+            message = data["choices"][0]["message"]
+        except (KeyError, IndexError, TypeError) as exc:
+            raise LLMError("Réponse de Rodium illisible (aucun choix).") from exc
+        calls: list[ToolCall] = []
+        for item in message.get("tool_calls") or []:
+            try:
+                function = item["function"]
+                raw_args = function.get("arguments") or "{}"
+                args = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
+                if not isinstance(args, dict):
+                    args = {}
+                calls.append(
+                    ToolCall(
+                        name=str(function.get("name", "")),
+                        args=args,
+                        call_id=str(item.get("id", "")),
+                        model_id=bool(item.get("id")),
+                    )
+                )
+            except (KeyError, TypeError, ValueError) as exc:
+                raise LLMError("Appel d'outil Rodium illisible.") from exc
+        text = str(message.get("content") or "").strip()
+        usage = data.get("usage") or {}
+        return ModelTurn(
+            message={
+                "role": "assistant",
+                "content": text,
+                "tool_calls": [_tool_call_entry(call) for call in calls],
+            },
+            calls=tuple(calls),
+            text=text,
+            input_tokens=int(usage.get("prompt_tokens") or 0),
+            output_tokens=int(usage.get("completion_tokens") or 0),
         )
 
 

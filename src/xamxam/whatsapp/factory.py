@@ -6,7 +6,7 @@ import logging
 import os
 from pathlib import Path
 
-from xamxam.agent import GeminiAgentModel
+from xamxam.agent import GeminiAgentModel, RodiumAgentModel
 from xamxam.config import Settings
 from xamxam.llm.base import LLMConfigurationError
 from xamxam.llm.factory import create_llm
@@ -63,10 +63,18 @@ def build_bot(
             lexicon_terms=[term.term for term in pipeline.index.lexicon.terms],
             max_explanation_chars=bot_settings.max_explanation_chars,
         ),
-        agent=GeminiAgentModel(
-            api_key=settings.gemini_api_key or "",
-            model=settings.gemini_model,
-            fallback_models=[settings.gemini_fallback_model],
+        agent=(
+            RodiumAgentModel(
+                api_key=settings.rodium_api_key,
+                model=settings.rodium_model,
+                fallback_models=[settings.rodium_fallback_model],
+            )
+            if settings.rodium_api_key
+            else GeminiAgentModel(
+                api_key=settings.gemini_api_key or "",
+                model=settings.gemini_model,
+                fallback_models=[settings.gemini_fallback_model],
+            )
         ),
         # Pas de cache STT dans le bot : aucun contenu envoyé par l'élève (photo, audio,
         # transcription) n'est conservé après traitement. Seul le cache TTS (audios

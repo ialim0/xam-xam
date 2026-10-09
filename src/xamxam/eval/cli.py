@@ -248,7 +248,7 @@ def _llm(args: argparse.Namespace) -> None:
         write_outputs,
     )
     from xamxam.lexicon import load_lexicon
-    from xamxam.llm.factory import build_llm
+    from xamxam.llm.factory import build_llm, build_rodium_llm
     from xamxam.whatsapp.settings import BotSettings
 
     settings = Settings.from_env()
@@ -257,11 +257,20 @@ def _llm(args: argparse.Namespace) -> None:
     models = [
         ConfiguredModel(
             config,
-            build_llm(
-                config.model,
-                api_key=settings.gemini_api_key or "",
-                lexicon_terms=terms,
-                max_explanation_chars=max_chars,
+            (
+                build_rodium_llm(
+                    config.model,
+                    api_key=settings.rodium_api_key,
+                    lexicon_terms=terms,
+                    max_explanation_chars=max_chars,
+                )
+                if settings.rodium_api_key
+                else build_llm(
+                    config.model,
+                    api_key=settings.gemini_api_key or "",
+                    lexicon_terms=terms,
+                    max_explanation_chars=max_chars,
+                )
             ),
         )
         for config in load_configs(args.configs)

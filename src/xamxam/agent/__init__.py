@@ -1,4 +1,4 @@
-"""Agent tuteur : boucle d'outils pilotée par Gemini, mémoire courte, consignes."""
+"""Agent tuteur : boucle d'outils pilotée par Rodium ou Gemini, mémoire courte, consignes."""
 
 from xamxam.agent.loop import AgentRun, Toolbox, run_agent
 from xamxam.agent.memory import Conversation, ConversationMemory, history_messages
@@ -6,6 +6,7 @@ from xamxam.agent.model import (
     AgentModel,
     GeminiAgentModel,
     ModelTurn,
+    RodiumAgentModel,
     ScriptedAgentModel,
     ToolCall,
 )
@@ -20,6 +21,7 @@ __all__ = [
     "ConversationMemory",
     "GeminiAgentModel",
     "ModelTurn",
+    "RodiumAgentModel",
     "ScriptedAgentModel",
     "ToolCall",
     "Toolbox",
