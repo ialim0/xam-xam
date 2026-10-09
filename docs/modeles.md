@@ -1,12 +1,21 @@
-# Modèles de langage : Gemini
+# Modèles de langage : Gemini ou Rodium
 
-Le bot utilise l'API Gemini ([Google AI Studio](https://aistudio.google.com/apikey)) à deux
-endroits :
+Le bot utilise un modèle multimodal à deux endroits. Deux fournisseurs sont pris en charge :
+
+- **Gemini** (par défaut) : API Google, clé gratuite sur
+  [Google AI Studio](https://aistudio.google.com/apikey). C'est le chemin le plus simple
+  pour essayer le projet.
+- **Rodium** (optionnel) : passerelle RodiumAI (`https://api.rodiumai.io/v1`) compatible avec
+  l'API OpenAI Chat Completions, qui donne accès aux mêmes modèles Gemini et à d'autres.
+  Utile si vous avez déjà un compte Rodium ou un besoin de facturation unique.
+
+Les deux servent :
 
 - **l'agent tuteur** ([`src/xamxam/agent/`](../src/xamxam/agent/)) : à chaque message, il
   choisit quoi faire grâce à l'appel de fonctions (répondre en texte, résoudre l'exercice,
   envoyer une note vocale, proposer des boutons, lancer une vidéo) ;
-- **la résolution** ([`src/xamxam/llm/gemini.py`](../src/xamxam/llm/gemini.py)) : la photo de
+- **la résolution** ([`gemini.py`](../src/xamxam/llm/gemini.py) ou
+  [`rodium.py`](../src/xamxam/llm/rodium.py)) : la photo de
   l'exercice est envoyée **directement** au modèle, qui recopie l'énoncé, résout et rédige
   l'explication en wolof au format JSON décrit dans
   [`src/xamxam/llm/schema.py`](../src/xamxam/llm/schema.py). Le calcul est revérifié avec
@@ -17,9 +26,15 @@ endroits :
 
 | Variable | Rôle |
 | --- | --- |
-| `GEMINI_API_KEY` | Clé de [Google AI Studio](https://aistudio.google.com/apikey) (plan gratuit possible). Obligatoire pour le bot. |
+| `LLM_PROVIDER` | `gemini` ou `rodium`. Sans valeur : `rodium` si `RODIUM_API_KEY` est définie, sinon `gemini`. |
+| `GEMINI_API_KEY` | Clé de [Google AI Studio](https://aistudio.google.com/apikey) (plan gratuit possible). |
 | `GEMINI_MODEL` | Modèle principal, `gemini-3.5-flash` par défaut. |
 | `GEMINI_FALLBACK_MODEL` | Repli, `gemini-3.6-flash` par défaut. |
+| `RODIUM_API_KEY` | Clé RodiumAI, seulement pour `LLM_PROVIDER=rodium`. |
+| `RODIUM_MODEL` | Modèle principal du catalogue Rodium, `google/gemini-3.8-flash` par défaut. |
+| `RODIUM_FALLBACK_MODEL` | Repli, `google/gemini-3.7-flash` par défaut. |
+
+Seule la clé du fournisseur choisi est obligatoire ; `/health` indique celle qui manque.
 
 ## Choix du modèle (essais du 8 octobre 2026, clé gratuite)
 
@@ -38,7 +53,8 @@ Google ne publie pas les quotas du plan gratuit dans sa documentation : ils se l
 [AI Studio](https://aistudio.google.com/rate-limit) et se réinitialisent chaque jour à
 minuit, heure du Pacifique.
 
-Détails des appels :
+Détails des appels Gemini (Rodium suit le même principe au format Chat Completions :
+`tools` de type `function`, image en `image_url` base64, JSON demandé dans le prompt) :
 
 - route `POST https://generativelanguage.googleapis.com/v1beta/models/{modèle}:generateContent`,
   clé dans l'en-tête `x-goog-api-key` ;
@@ -52,7 +68,8 @@ Détails des appels :
   saturé ;
 - les erreurs ne recopient jamais la réponse de l'API (qui peut citer l'élève) ni la clé.
 
-**Confidentialité** : la photo et les messages de l'élève sont transmis à Google. Avec une
+**Confidentialité** : la photo et les messages de l'élève sont transmis au fournisseur
+(Google, ou Rodium puis le modèle choisi). Avec une
 clé du niveau gratuit, Google peut utiliser ces contenus pour améliorer ses produits ; pour un
 usage réel avec des élèves, utilisez une clé d'un projet facturé et relisez les
 [conditions de l'API Gemini](https://ai.google.dev/gemini-api/terms).
@@ -69,9 +86,10 @@ Aucun modèle de traduction n'est choisi. Licences **non commerciales à éviter
 Tout traducteur retenu devra recopier les marqueurs `⟦T1⟧`, `⟦T2⟧`… qui protègent les termes du
 lexique : une traduction où un marqueur manque ou est dupliqué est rejetée et journalisée.
 
-## Comparer des modèles Gemini
+## Comparer des modèles
 
-La commande lit `GEMINI_API_KEY`.
+La commande utilise le fournisseur choisi par `LLM_PROVIDER` (et sa clé) ; les noms de
+modèles du fichier de configurations doivent être ceux de ce fournisseur.
 
 ```bash
 python -m xamxam.eval llm --photos data/eval/photos --configs data/eval/configurations_llm.example.json

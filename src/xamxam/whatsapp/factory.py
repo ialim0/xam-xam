@@ -33,8 +33,8 @@ WAITING_STICKER_PATH = Path(__file__).with_name("assets") / "attente.webp"
 def build_bot(
     settings: Settings, pipeline: XamXamPipeline, bot_settings: BotSettings | None = None
 ) -> XamXamBot:
-    """Construit le bot réel : agent Gemini, Meta, Kiriku et TimaLens s'ils sont configurés.
-    Suppose missing_bot_variables() vide."""
+    """Construit le bot réel : agent (Gemini ou Rodium), Meta, Kiriku et TimaLens s'ils
+    sont configurés. Suppose missing_bot_variables() vide."""
     if settings.translate_from_french:
         # Aucun modèle de traduction n'est encore choisi.
         raise LLMConfigurationError(
@@ -65,11 +65,11 @@ def build_bot(
         ),
         agent=(
             RodiumAgentModel(
-                api_key=settings.rodium_api_key,
+                api_key=settings.rodium_api_key or "",
                 model=settings.rodium_model,
                 fallback_models=[settings.rodium_fallback_model],
             )
-            if settings.rodium_api_key
+            if settings.llm_provider == "rodium"
             else GeminiAgentModel(
                 api_key=settings.gemini_api_key or "",
                 model=settings.gemini_model,

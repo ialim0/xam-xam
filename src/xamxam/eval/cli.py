@@ -126,7 +126,7 @@ def build_parser() -> argparse.ArgumentParser:
     unblind.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     unblind.add_argument("--overwrite-human", action="store_true")
 
-    llm = commands.add_parser("llm", help="Compare des modèles Gemini sur des photos.")
+    llm = commands.add_parser("llm", help="Compare des modèles (Gemini ou Rodium) sur des photos.")
     llm.add_argument("--photos", type=Path, required=True, help="Dossier des photos d'exercices.")
     llm.add_argument(
         "--verite", type=Path, help="Vérité terrain (défaut : <photos>/verite_terrain.csv)."
@@ -260,11 +260,11 @@ def _llm(args: argparse.Namespace) -> None:
             (
                 build_rodium_llm(
                     config.model,
-                    api_key=settings.rodium_api_key,
+                    api_key=settings.rodium_api_key or "",
                     lexicon_terms=terms,
                     max_explanation_chars=max_chars,
                 )
-                if settings.rodium_api_key
+                if settings.llm_provider == "rodium"
                 else build_llm(
                     config.model,
                     api_key=settings.gemini_api_key or "",

@@ -1,7 +1,8 @@
 """Configuration lue depuis les variables d'environnement (fichier .env chargé par le shell).
 
-Le bot WhatsApp a besoin de Meta (WhatsApp Cloud) et de RODIUM_API_KEY (ou GEMINI_API_KEY) ;
-sans eux, il répond 503. Kiriku (voix) et TimaLens (vidéo) sont optionnels : sans clé, le bot
+Le bot WhatsApp a besoin de Meta (WhatsApp Cloud) et d'une clé de modèle : GEMINI_API_KEY
+(Google AI Studio, plan gratuit possible) ou, en option, RODIUM_API_KEY ; sans elles, il
+répond 503. Kiriku (voix) et TimaLens (vidéo) sont optionnels : sans clé, le bot
 répond en texte et n'envoie pas de vidéo.
 Les commandes d'évaluation fonctionnent sans clé (provider mock).
 """
@@ -30,6 +31,8 @@ DEFAULT_GEMINI_FALLBACK_MODEL = "gemini-3.6-flash"
 # Modèle Rodium stable, avec vision, JSON mode et appels d'outils.
 DEFAULT_RODIUM_MODEL = "google/gemini-3.8-flash"
 DEFAULT_RODIUM_FALLBACK_MODEL = "google/gemini-3.7-flash"
+# Fournisseurs de modèle acceptés par LLM_PROVIDER.
+LLM_PROVIDERS = ("gemini", "rodium")
 # Voix wolof de TimaLens (liste : GET https://api.timalens.com/api/v1/generation/options).
 DEFAULT_TIMALENS_VOICE = "soynade_wo_female"
 
@@ -51,6 +54,17 @@ def _number(raw: str | None) -> float | None:
         return float(raw.replace(",", "."))
     except ValueError as exc:
         raise ValueError(f"Nombre invalide : « {raw} ».") from exc
+
+
+def _provider(raw: str | None) -> str | None:
+    if raw is None:
+        return None
+    value = raw.lower()
+    if value not in LLM_PROVIDERS:
+        raise ValueError(
+            f"LLM_PROVIDER invalide : « {raw} » (attendu : {', '.join(LLM_PROVIDERS)})."
+        )
+    return value
 
 
 def normalize_phone_number(number: str) -> str:
@@ -86,6 +100,8 @@ class Settings:
     rodium_api_key: str | None = field(default=None, repr=False)
     rodium_model: str = DEFAULT_RODIUM_MODEL
     rodium_fallback_model: str = DEFAULT_RODIUM_FALLBACK_MODEL
+    # Choix explicite du fournisseur (LLM_PROVIDER) ; None : déduit des clés présentes.
+    llm_provider_choice: str | None = None
     timalens_voice: str = DEFAULT_TIMALENS_VOICE
     # Plafond de crédits TimaLens par vidéo : au-delà, le rendu payant n'est pas confirmé.
     timalens_max_credits: float | None = None
@@ -122,6 +138,7 @@ class Settings:
             rodium_model=_read(env, "RODIUM_MODEL") or DEFAULT_RODIUM_MODEL,
             rodium_fallback_model=_read(env, "RODIUM_FALLBACK_MODEL")
             or DEFAULT_RODIUM_FALLBACK_MODEL,
+            llm_provider_choice=_provider(_read(env, "LLM_PROVIDER")),
             timalens_voice=_read(env, "TIMALENS_VOICE") or DEFAULT_TIMALENS_VOICE,
             timalens_max_credits=_number(_read(env, "TIMALENS_MAX_CREDITS")),
             translate_from_french=_flag(_read(env, "TRANSLATE_FROM_FRENCH")),
@@ -131,6 +148,14 @@ class Settings:
             cache_dir=Path(_read(env, "XAMXAM_CACHE_DIR") or DEFAULT_CACHE_DIR),
             state_dir=Path(value) if (value := _read(env, "XAMXAM_STATE_DIR")) else None,
         )
+
+    @property
+    def llm_provider(self) -> str:
+        """Fournisseur du modèle : LLM_PROVIDER s'il est défini, sinon Rodium si sa clé est
+        présente (compatibilité des déploiements existants), sinon Gemini."""
+        if self.llm_provider_choice:
+            return self.llm_provider_choice
+        return "rodium" if self.rodium_api_key else "gemini"
 
     @property
     def kvicc_tts_configured(self) -> bool:
@@ -151,6 +176,9 @@ class Settings:
             "WHATSAPP_PHONE_NUMBER_ID": self.whatsapp_phone_number_id,
             "WHATSAPP_VERIFY_TOKEN": self.whatsapp_verify_token,
             "WHATSAPP_APP_SECRET": self.whatsapp_app_secret,
-            "RODIUM_API_KEY (ou GEMINI_API_KEY)": self.rodium_api_key or self.gemini_api_key,
         }
+        if self.llm_provider == "rodium":
+            required["RODIUM_API_KEY"] = self.rodium_api_key
+        else:
+            required["GEMINI_API_KEY"] = self.gemini_api_key
         return [name for name, value in required.items() if not value]

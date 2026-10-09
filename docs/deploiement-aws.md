@@ -46,7 +46,7 @@ Le script demande chaque valeur (saisie masquée pour les secrets) ; entrée vid
 | Type | Variables |
 | --- | --- |
 | SecureString | `WHATSAPP_TOKEN`, `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN`, `RODIUM_API_KEY` (ou `GEMINI_API_KEY`), `KVICC_API_KEY`, `TIMALENS_API_KEY`, `LOG_HASH_KEY` (`openssl rand -hex 32`), `UNLIMITED_NUMBERS` |
-| String | `WHATSAPP_PHONE_NUMBER_ID`, `KVICC_TTS_URL`, `KVICC_STT_URL`, `TIMALENS_VOICE`, `TIMALENS_MAX_CREDITS`, `RODIUM_MODEL`, `RODIUM_FALLBACK_MODEL` |
+| String | `WHATSAPP_PHONE_NUMBER_ID`, `LLM_PROVIDER` (`gemini` ou `rodium`), `KVICC_TTS_URL`, `KVICC_STT_URL`, `TIMALENS_VOICE`, `TIMALENS_MAX_CREDITS`, `RODIUM_MODEL`, `RODIUM_FALLBACK_MODEL` |
 
 Tout autre réglage (`XAMXAM_REPLY_MODE`, `XAMXAM_VIDEOS_PER_DAY`…) s'ajoute de la même façon :
 

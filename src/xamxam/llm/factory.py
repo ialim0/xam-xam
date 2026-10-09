@@ -23,7 +23,7 @@ def build_llm(
     translate_from_french: bool = False,
     http_transport: httpx.BaseTransport | None = None,
 ) -> LLMProvider:
-    """Crée le provider Gemini direct pour les anciens déploiements."""
+    """Crée le provider Gemini (API Google AI Studio)."""
     if not api_key:
         raise LLMConfigurationError("GEMINI_API_KEY n'est pas définie (voir README).")
     prompt = build_system_prompt(
@@ -75,8 +75,8 @@ def create_llm(
     max_explanation_chars: int,
     http_transport: httpx.BaseTransport | None = None,
 ) -> LLMProvider:
-    """Privilégie Rodium ; conserve Gemini comme compatibilité pour les anciens déploiements."""
-    if settings.rodium_api_key:
+    """Modèle de résolution du fournisseur choisi (`Settings.llm_provider`)."""
+    if settings.llm_provider == "rodium":
         prompt = build_system_prompt(
             lexicon_terms,
             max_explanation_chars,
@@ -84,7 +84,7 @@ def create_llm(
             include_schema=True,
         )
         return RodiumProvider(
-            api_key=settings.rodium_api_key,
+            api_key=settings.rodium_api_key or "",
             model=settings.rodium_model,
             fallback_models=[settings.rodium_fallback_model],
             system_prompt=prompt,

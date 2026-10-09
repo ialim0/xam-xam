@@ -12,6 +12,19 @@ from xamxam.whatsapp.privacy import IdHasher
 from xamxam.whatsapp.settings import BotSettings
 
 
+def test_llm_provider_is_gemini_by_default_and_rodium_is_optional() -> None:
+    assert Settings.from_env({"GEMINI_API_KEY": "g"}).llm_provider == "gemini"
+    assert Settings.from_env({}).llm_provider == "gemini"
+    # Compatibilité : une seule clé Rodium suffit à choisir Rodium.
+    assert Settings.from_env({"RODIUM_API_KEY": "r"}).llm_provider == "rodium"
+    both = {"GEMINI_API_KEY": "g", "RODIUM_API_KEY": "r"}
+    assert Settings.from_env({**both, "LLM_PROVIDER": "Gemini"}).llm_provider == "gemini"
+    chosen = Settings.from_env({"GEMINI_API_KEY": "g", "LLM_PROVIDER": "rodium"})
+    assert "RODIUM_API_KEY" in chosen.missing_bot_variables()
+    with pytest.raises(ValueError, match="LLM_PROVIDER"):
+        Settings.from_env({"LLM_PROVIDER": "openai"})
+
+
 def test_settings_bot_variables() -> None:
     settings = Settings.from_env(
         {
@@ -27,7 +40,7 @@ def test_settings_bot_variables() -> None:
     assert settings.state_dir == Path("/state")
     assert settings.whatsapp_graph_api_version == "v23.0"
     assert "WHATSAPP_APP_SECRET" not in settings.missing_bot_variables()
-    assert "RODIUM_API_KEY (ou GEMINI_API_KEY)" in settings.missing_bot_variables()
+    assert "GEMINI_API_KEY" in settings.missing_bot_variables()
     # Kiriku (voix) et TimaLens (vidéo) sont optionnels.
     assert not {"KVICC_TTS_URL", "KVICC_API_KEY", "TIMALENS_API_KEY"} & set(
         settings.missing_bot_variables()

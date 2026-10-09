@@ -77,7 +77,7 @@ def test_webhook_without_configuration(pipeline: XamXamPipeline) -> None:
     health = client.get("/health").json()
     assert health["status"] == "degraded"
     assert health["bot_ready"] is False
-    assert "RODIUM_API_KEY (ou GEMINI_API_KEY)" in health["missing_variables"]
+    assert "GEMINI_API_KEY" in health["missing_variables"]
     assert health["llm"] is None
     assert "LOG_HASH_KEY" not in health["missing_variables"]
     assert "KVICC_API_KEY" not in health["missing_variables"]
